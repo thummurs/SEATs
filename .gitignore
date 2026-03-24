@@ -24,3 +24,4 @@ seats.log
 build/
 *.elf
 *.bin
+seats.log

@@ -1,832 +1,783 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SEATs — Attendance Dashboard</title>
-    <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Syne:wght@400;600;700;800&display=swap"
-      rel="stylesheet"
-    />
-    <style>
-      :root {
-        --bg: #0a0c0f;
-        --bg2: #111318;
-        --bg3: #181c23;
-        --border: #1e2330;
-        --green: #00e676;
-        --green-dim: #00994f;
-        --red: #ff4444;
-        --amber: #ffaa00;
-        --text: #e2e8f0;
-        --muted: #4a5568;
-        --mono: "JetBrains Mono", monospace;
-        --sans: "Syne", sans-serif;
-      }
-      * {
-        box-sizing: border-box;
-        margin: 0;
-        padding: 0;
-      }
-      body {
-        background: var(--bg);
-        color: var(--text);
-        font-family: var(--sans);
-        min-height: 100vh;
-        overflow-x: hidden;
-      }
-      body::before {
-        content: "";
-        position: fixed;
-        inset: 0;
-        background: repeating-linear-gradient(
-          0deg,
-          transparent,
-          transparent 2px,
-          rgba(0, 230, 118, 0.012) 2px,
-          rgba(0, 230, 118, 0.012) 4px
-        );
-        pointer-events: none;
-        z-index: 999;
-      }
-      header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 18px 32px;
-        border-bottom: 1px solid var(--border);
-        background: var(--bg2);
-        position: sticky;
-        top: 0;
-        z-index: 100;
-      }
-      .logo {
-        font-family: var(--mono);
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 0.15em;
-        color: var(--green);
-        display: flex;
-        align-items: center;
-        gap: 10px;
-      }
-      .logo-dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--green);
-        animation: pulse 2s infinite;
-      }
-      @keyframes pulse {
-        0%,
-        100% {
-          opacity: 1;
-          box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.4);
-        }
-        50% {
-          opacity: 0.7;
-          box-shadow: 0 0 0 6px rgba(0, 230, 118, 0);
-        }
-      }
-      .header-right {
-        font-family: var(--mono);
-        font-size: 11px;
-        color: var(--muted);
-        letter-spacing: 0.05em;
-      }
-      #clock {
-        color: var(--text);
-        font-weight: 600;
-      }
-      main {
-        display: grid;
-        grid-template-columns: 340px 1fr;
-        height: calc(100vh - 57px);
-      }
-      aside {
-        border-right: 1px solid var(--border);
-        background: var(--bg2);
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-      }
-      .section {
-        border-bottom: 1px solid var(--border);
-        padding: 20px;
-      }
-      .section-label {
-        font-family: var(--mono);
-        font-size: 10px;
-        letter-spacing: 0.2em;
-        color: var(--muted);
-        text-transform: uppercase;
-        margin-bottom: 14px;
-      }
-      .stats-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-      }
-      .stat-card {
-        background: var(--bg3);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 12px 14px;
-      }
-      .stat-value {
-        font-family: var(--mono);
-        font-size: 28px;
-        font-weight: 700;
-        color: var(--green);
-        line-height: 1;
-      }
-      .stat-label {
-        font-family: var(--mono);
-        font-size: 10px;
-        color: var(--muted);
-        margin-top: 4px;
-        letter-spacing: 0.08em;
-      }
-      .status-badge {
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.1em;
-        padding: 3px 10px;
-        border-radius: 3px;
-        text-transform: uppercase;
-      }
-      .badge-active {
-        background: rgba(0, 230, 118, 0.15);
-        color: var(--green);
-        border: 1px solid var(--green-dim);
-      }
-      .badge-none {
-        background: rgba(74, 85, 104, 0.2);
-        color: var(--muted);
-        border: 1px solid var(--border);
-      }
-      .badge-ended {
-        background: rgba(255, 68, 68, 0.1);
-        color: var(--red);
-        border: 1px solid rgba(255, 68, 68, 0.3);
-      }
-      .session-name {
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-      }
-      .form-group {
-        margin-bottom: 10px;
-      }
-      label {
-        display: block;
-        font-family: var(--mono);
-        font-size: 10px;
-        letter-spacing: 0.15em;
-        color: var(--muted);
-        margin-bottom: 5px;
-        text-transform: uppercase;
-      }
-      input,
-      select {
-        width: 100%;
-        background: var(--bg);
-        border: 1px solid var(--border);
-        border-radius: 4px;
-        color: var(--text);
-        font-family: var(--mono);
-        font-size: 12px;
-        padding: 8px 10px;
-        outline: none;
-        transition: border-color 0.2s;
-      }
-      input:focus,
-      select:focus {
-        border-color: var(--green-dim);
-      }
-      .btn {
-        font-family: var(--mono);
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        text-transform: uppercase;
-        padding: 9px 16px;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        transition: all 0.15s;
-        width: 100%;
-      }
-      .btn-green {
-        background: var(--green);
-        color: #000;
-      }
-      .btn-green:hover {
-        background: #00ff88;
-        box-shadow: 0 0 16px rgba(0, 230, 118, 0.3);
-      }
-      .btn-red {
-        background: transparent;
-        color: var(--red);
-        border: 1px solid var(--red);
-      }
-      .btn-red:hover {
-        background: rgba(255, 68, 68, 0.1);
-      }
-      .btn:disabled {
-        opacity: 0.35;
-        cursor: not-allowed;
-      }
-      .sessions-list {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-      }
-      .session-item {
-        background: var(--bg3);
-        border: 1px solid var(--border);
-        border-radius: 5px;
-        padding: 10px 12px;
-        cursor: pointer;
-        transition: border-color 0.15s;
-      }
-      .session-item:hover {
-        border-color: var(--muted);
-      }
-      .session-item.selected {
-        border-color: var(--green-dim);
-      }
-      .session-item-code {
-        font-family: var(--mono);
-        font-size: 12px;
-        font-weight: 600;
-        color: var(--text);
-      }
-      .session-item-meta {
-        font-family: var(--mono);
-        font-size: 10px;
-        color: var(--muted);
-        margin-top: 3px;
-      }
-      .content {
-        overflow-y: auto;
-        padding: 24px;
-        display: flex;
-        flex-direction: column;
-        gap: 20px;
-      }
-      .feed-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        margin-bottom: 16px;
-      }
-      .feed-title {
-        font-family: var(--sans);
-        font-size: 18px;
-        font-weight: 700;
-        color: var(--text);
-      }
-      .feed-subtitle {
-        font-family: var(--mono);
-        font-size: 11px;
-        color: var(--muted);
-        margin-top: 2px;
-      }
-      .live-pill {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        font-family: var(--mono);
-        font-size: 10px;
-        font-weight: 700;
-        letter-spacing: 0.15em;
-        color: var(--green);
-        background: rgba(0, 230, 118, 0.1);
-        border: 1px solid var(--green-dim);
-        border-radius: 20px;
-        padding: 4px 12px;
-      }
-      .live-dot {
-        width: 6px;
-        height: 6px;
-        border-radius: 50%;
-        background: var(--green);
-        animation: pulse 1.5s infinite;
-      }
-      .table-wrap {
-        background: var(--bg2);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        overflow: hidden;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      thead tr {
-        background: var(--bg3);
-        border-bottom: 1px solid var(--border);
-      }
-      th {
-        font-family: var(--mono);
-        font-size: 10px;
-        letter-spacing: 0.18em;
-        color: var(--muted);
-        text-transform: uppercase;
-        text-align: left;
-        padding: 12px 16px;
-        font-weight: 600;
-      }
-      td {
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--text);
-        padding: 11px 16px;
-        border-bottom: 1px solid var(--border);
-      }
-      tr:last-child td {
-        border-bottom: none;
-      }
-      tbody tr {
-        transition: background 0.1s;
-      }
-      tbody tr:hover {
-        background: var(--bg3);
-      }
-      tbody tr.new-row {
-        animation: slideIn 0.4s ease;
-      }
-      @keyframes slideIn {
-        from {
-          opacity: 0;
-          transform: translateX(-10px);
-          background: rgba(0, 230, 118, 0.08);
-        }
-        to {
-          opacity: 1;
-          transform: translateX(0);
-          background: transparent;
-        }
-      }
-      .status-present {
-        color: var(--green);
-        font-weight: 700;
-        font-size: 10px;
-        letter-spacing: 0.1em;
-      }
-      .status-denied {
-        color: var(--red);
-        font-weight: 700;
-        font-size: 10px;
-        letter-spacing: 0.1em;
-      }
-      .empty-state {
-        padding: 48px;
-        text-align: center;
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--muted);
-      }
-      #toast {
-        position: fixed;
-        bottom: 24px;
-        right: 24px;
-        background: var(--bg3);
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        padding: 12px 20px;
-        font-family: var(--mono);
-        font-size: 12px;
-        color: var(--text);
-        opacity: 0;
-        transform: translateY(10px);
-        transition: all 0.25s;
-        z-index: 200;
-        max-width: 320px;
-      }
-      #toast.show {
-        opacity: 1;
-        transform: translateY(0);
-      }
-      #toast.success {
-        border-color: var(--green-dim);
-        color: var(--green);
-      }
-      #toast.error {
-        border-color: rgba(255, 68, 68, 0.4);
-        color: var(--red);
-      }
-      ::-webkit-scrollbar {
-        width: 4px;
-      }
-      ::-webkit-scrollbar-thumb {
-        background: var(--border);
-        border-radius: 2px;
-      }
-    </style>
-  </head>
-  <body>
-    <header>
-      <div class="logo">
-        <div class="logo-dot"></div>
-        SEATs // ATTENDANCE SYSTEM
-      </div>
-      <div class="header-right">
-        <span id="clock">--:--:--</span> &nbsp;|&nbsp; AUTO-REFRESH 5s
-      </div>
-    </header>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SEATs — Attendance Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0a0c0f;
+    --surface:  #111418;
+    --border:   #1e2329;
+    --border2:  #2a3040;
+    --text:     #c9d1d9;
+    --muted:    #4a5568;
+    --accent:   #00e5ff;
+    --green:    #39d353;
+    --red:      #f85149;
+    --yellow:   #e3b341;
+    --purple:   #bc8cff;
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-sans: 'IBM Plex Sans', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    min-height: 100vh;
+    line-height: 1.6;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px,
+      rgba(0,229,255,0.012) 2px, rgba(0,229,255,0.012) 4px);
+    pointer-events: none; z-index: 9999;
+  }
+  .shell { display: grid; grid-template-rows: 56px 1fr; min-height: 100vh; }
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 24px; position: sticky; top: 0; z-index: 100;
+  }
+  .logo { font-family: var(--font-mono); font-size: 13px; font-weight: 600;
+    letter-spacing: 0.12em; color: var(--accent); text-transform: uppercase; }
+  .logo span { color: var(--muted); margin: 0 6px; }
+  .status-bar { display: flex; align-items: center; gap: 20px;
+    font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted);
+    display: inline-block; margin-right: 6px; }
+  .dot.live { background: var(--green); box-shadow: 0 0 6px var(--green);
+    animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .main { display: grid; grid-template-columns: 260px 1fr;
+    height: calc(100vh - 56px); overflow: hidden; }
+  aside { background: var(--surface); border-right: 1px solid var(--border);
+    display: flex; flex-direction: column; overflow-y: auto; }
+  .nav-section { padding: 20px 16px 8px; font-family: var(--font-mono);
+    font-size: 10px; letter-spacing: 0.15em; color: var(--muted); text-transform: uppercase; }
+  .nav-btn { display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+    cursor: pointer; border: none; background: none; color: var(--text);
+    font-family: var(--font-sans); font-size: 13px; width: calc(100% - 16px);
+    text-align: left; border-radius: 4px; margin: 1px 8px; transition: background 0.15s; }
+  .nav-btn:hover { background: var(--border); }
+  .nav-btn.active { background: rgba(0,229,255,0.08); color: var(--accent);
+    border-left: 2px solid var(--accent); }
+  .nav-btn .icon { font-size: 16px; width: 20px; text-align: center; }
+  .session-card { margin: 16px; padding: 14px; border: 1px solid var(--border2);
+    border-radius: 6px; background: rgba(255,255,255,0.02); }
+  .session-card .label { font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+    letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+  .session-name { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 3px;
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    letter-spacing: 0.08em; text-transform: uppercase; }
+  .badge.active  { background: rgba(57,211,83,0.15);  color: var(--green); }
+  .badge.created { background: rgba(227,179,65,0.15); color: var(--yellow); }
+  .badge.ended   { background: rgba(74,85,104,0.2);   color: var(--muted); }
+  .badge.none    { background: rgba(74,85,104,0.1);   color: var(--muted); }
+  .stat-row { display: flex; justify-content: space-between; margin-top: 10px;
+    padding-top: 10px; border-top: 1px solid var(--border); }
+  .stat { text-align: center; }
+  .stat .num { font-family: var(--font-mono); font-size: 20px; font-weight: 600; color: var(--accent); }
+  .stat .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .content { overflow-y: auto; padding: 24px; }
+  .page { display: none; }
+  .page.active { display: block; animation: fadeIn 0.2s ease; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  .page-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.15em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 20px;
+    display: flex; align-items: center; gap: 8px; }
+  .page-title::after { content:''; flex:1; height:1px; background:var(--border); }
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px; margin-bottom: 28px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 18px; }
+  .card .card-label { font-family: var(--font-mono); font-size: 10px; color: var(--muted);
+    letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+  .card .card-value { font-family: var(--font-mono); font-size: 28px; font-weight: 600; color: var(--accent); }
+  .card .card-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .table-wrap { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; overflow: hidden; margin-bottom: 24px; }
+  .table-header { padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .table-header h3 { font-family: var(--font-mono); font-size: 11px;
+    letter-spacing: 0.1em; color: var(--text); text-transform: uppercase; }
+  table { width: 100%; border-collapse: collapse; }
+  th { padding: 10px 16px; text-align: left; font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase;
+    border-bottom: 1px solid var(--border); background: rgba(255,255,255,0.01); }
+  td { padding: 11px 16px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .mono { font-family: var(--font-mono); font-size: 12px; }
+  .text-muted { color: var(--muted); }
+  .text-green { color: var(--green); }
+  .text-red   { color: var(--red); }
+  .text-accent{ color: var(--accent); }
+  .feed-entry { display: flex; align-items: center; gap: 14px; padding: 12px 16px;
+    border-bottom: 1px solid var(--border); animation: slideIn 0.3s ease; transition: background 0.15s; }
+  .feed-entry:hover { background: rgba(255,255,255,0.02); }
+  @keyframes slideIn { from{opacity:0;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
+  .feed-icon { width: 34px; height: 34px; border-radius: 50%; display: flex;
+    align-items: center; justify-content: center; font-size: 14px; flex-shrink: 0; }
+  .feed-icon.present { background: rgba(57,211,83,0.15); color: var(--green); }
+  .feed-icon.denied  { background: rgba(248,81,73,0.15); color: var(--red); }
+  .feed-body { flex: 1; min-width: 0; }
+  .feed-name { font-size: 13px; font-weight: 500; }
+  .feed-uid  { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+  .feed-time { font-family: var(--font-mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px; margin-bottom: 16px; }
+  .field label { display: block; font-family: var(--font-mono); font-size: 10px;
+    letter-spacing: 0.1em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px; }
+  .field input, .field select { width: 100%; background: var(--bg); border: 1px solid var(--border2);
+    border-radius: 4px; padding: 8px 12px; color: var(--text); font-family: var(--font-sans);
+    font-size: 13px; outline: none; transition: border-color 0.15s; }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .btn { padding: 8px 18px; border: none; border-radius: 4px; font-family: var(--font-mono);
+    font-size: 12px; font-weight: 600; letter-spacing: 0.05em; cursor: pointer;
+    transition: all 0.15s; text-transform: uppercase; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn-primary:hover { background: #33eeff; }
+  .btn-success { background: var(--green); color: #000; }
+  .btn-success:hover { background: #5af075; }
+  .btn-danger  { background: var(--red); color: #fff; }
+  .btn-danger:hover { opacity: 0.85; }
+  .btn-ghost { background: transparent; border: 1px solid var(--border2); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-sm { padding: 5px 12px; font-size: 10px; }
+  .form-card { background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 20px; margin-bottom: 24px; }
+  .form-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 16px; }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface);
+    border: 1px solid var(--border2); border-radius: 6px; padding: 12px 18px; font-size: 13px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4); opacity: 0; transform: translateY(8px);
+    transition: all 0.25s; z-index: 9000; max-width: 320px; }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.ok  { border-left: 3px solid var(--green); }
+  .toast.err { border-left: 3px solid var(--red); }
+  .toast.warn{ border-left: 3px solid var(--yellow); }
+  .empty { padding: 40px; text-align: center; color: var(--muted);
+    font-family: var(--font-mono); font-size: 12px; }
+  .actions-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  select option { background: #1a1e24; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
 
-    <main>
-      <aside>
-        <!-- Stats -->
-        <div class="section">
-          <div class="section-label">Live Stats</div>
-          <div class="stats-row">
-            <div class="stat-card">
-              <div class="stat-value" id="stat-present">—</div>
-              <div class="stat-label">PRESENT</div>
-            </div>
-            <div class="stat-card">
-              <div
-                class="stat-value"
-                id="stat-total"
-                style="color: var(--muted)"
-              >
-                —
-              </div>
-              <div class="stat-label">TOTAL</div>
-            </div>
-          </div>
+  /* ── Enroll specific ── */
+  .enroll-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 900px) { .enroll-grid { grid-template-columns: 1fr; } }
+
+  .photo-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 20px;
+  }
+  .photo-title { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 16px; }
+
+  .photo-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .photo-tab { padding: 6px 14px; border: 1px solid var(--border2); border-radius: 4px;
+    background: none; color: var(--muted); font-family: var(--font-mono); font-size: 11px;
+    cursor: pointer; transition: all 0.15s; text-transform: uppercase; letter-spacing: 0.06em; }
+  .photo-tab.active { background: rgba(0,229,255,0.1); border-color: var(--accent); color: var(--accent); }
+
+  .photo-view { display: none; }
+  .photo-view.active { display: block; }
+
+  /* Upload drop zone */
+  .dropzone {
+    border: 2px dashed var(--border2);
+    border-radius: 6px;
+    padding: 32px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .dropzone:hover, .dropzone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.04);
+  }
+  .dropzone input[type=file] {
+    position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+  }
+  .dropzone-icon { font-size: 28px; margin-bottom: 8px; }
+  .dropzone-text { font-size: 13px; color: var(--muted); }
+  .dropzone-text strong { color: var(--accent); }
+
+  /* Preview */
+  .photo-preview {
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 12px;
+    position: relative;
+  }
+  .photo-preview img, .photo-preview video, .photo-preview canvas {
+    width: 100%; height: 100%; object-fit: cover; display: none;
+  }
+  .photo-preview img.visible,
+  .photo-preview video.visible,
+  .photo-preview canvas.visible { display: block; }
+  .preview-placeholder { color: var(--muted); font-family: var(--font-mono); font-size: 11px; text-align: center; }
+
+  /* Webcam controls */
+  .webcam-controls { display: flex; gap: 8px; margin-top: 12px; }
+
+  /* Enroll status */
+  .enroll-status {
+    margin-top: 16px;
+    padding: 14px;
+    border-radius: 6px;
+    display: none;
+    font-size: 13px;
+  }
+  .enroll-status.ok   { background: rgba(57,211,83,0.1);  border: 1px solid rgba(57,211,83,0.3); color: var(--green); }
+  .enroll-status.err  { background: rgba(248,81,73,0.1);  border: 1px solid rgba(248,81,73,0.3); color: var(--red); }
+  .enroll-status.warn { background: rgba(227,179,65,0.1); border: 1px solid rgba(227,179,65,0.3); color: var(--yellow); }
+  .enroll-status.show { display: block; }
+
+  .spinner {
+    display: inline-block;
+    width: 14px; height: 14px;
+    border: 2px solid var(--border2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="logo">SEATs <span>//</span> Attendance System</div>
+    <div class="status-bar">
+      <span><span class="dot live" id="api-dot"></span><span id="api-status">connecting…</span></span>
+      <span id="clock" class="mono"></span>
+    </div>
+  </header>
+  <div class="main">
+    <aside>
+      <div class="nav-section">Navigation</div>
+      <button class="nav-btn active" onclick="showPage('live')"     id="nav-live">    <span class="icon">⚡</span> Live Feed</button>
+      <button class="nav-btn"        onclick="showPage('sessions')" id="nav-sessions"><span class="icon">📋</span> Sessions</button>
+      <button class="nav-btn"        onclick="showPage('students')" id="nav-students"><span class="icon">👤</span> Students</button>
+      <button class="nav-btn"        onclick="showPage('enroll')"   id="nav-enroll">  <span class="icon">✚</span> Enroll</button>
+
+      <div class="nav-section" style="margin-top:8px">Current Session</div>
+      <div class="session-card">
+        <div class="label">Status</div>
+        <div class="session-name" id="ss-name">No active session</div>
+        <span class="badge none" id="ss-badge">idle</span>
+        <div class="stat-row" id="ss-stats" style="display:none">
+          <div class="stat"><div class="num" id="ss-present">0</div><div class="lbl">Present</div></div>
+          <div class="stat"><div class="num" id="ss-total">0</div><div class="lbl">Total</div></div>
         </div>
+      </div>
+    </aside>
 
-        <!-- Active session -->
-        <div class="section">
-          <div class="section-label">Active Session</div>
-          <div
-            style="
-              display: flex;
-              align-items: center;
-              gap: 8px;
-              margin-bottom: 10px;
-            "
-          >
-            <span class="status-badge badge-none" id="active-badge">NONE</span>
+    <div class="content">
+
+      <!-- LIVE FEED -->
+      <div class="page active" id="page-live">
+        <div class="page-title">⚡ Live Attendance Feed</div>
+        <div class="cards">
+          <div class="card"><div class="card-label">Session Taps</div><div class="card-value" id="stat-taps">—</div><div class="card-sub">this session</div></div>
+          <div class="card"><div class="card-label">Present</div><div class="card-value" id="stat-present" style="color:var(--green)">—</div><div class="card-sub">NFC + face verified</div></div>
+          <div class="card"><div class="card-label">Denied</div><div class="card-value" id="stat-denied" style="color:var(--red)">—</div><div class="card-sub">failed verification</div></div>
+          <div class="card"><div class="card-label">Students</div><div class="card-value" id="stat-students">—</div><div class="card-sub">registered</div></div>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header">
+            <h3>Recent Taps</h3>
+            <span class="mono text-muted" style="font-size:11px" id="feed-updated">—</span>
           </div>
-          <div
-            class="session-name"
-            id="active-name"
-            style="color: var(--muted); font-size: 11px"
-          >
-            No session running
+          <div id="feed-list"></div>
+        </div>
+      </div>
+
+      <!-- SESSIONS -->
+      <div class="page" id="page-sessions">
+        <div class="page-title">📋 Sessions</div>
+        <div class="form-card">
+          <div class="form-title">Create New Session</div>
+          <div class="form-grid">
+            <div class="field"><label>Session Code</label><input id="f-code" placeholder="e.g. IoT-LAB-W10" /></div>
+            <div class="field"><label>Course Name</label><input id="f-course" placeholder="e.g. CS7NS2 IoT Lab" /></div>
+            <div class="field"><label>Date</label><input id="f-date" type="date" /></div>
+            <div class="field"><label>Occurrence (lecture #)</label><input id="f-occur" type="number" placeholder="1" min="1" /></div>
           </div>
-          <div id="end-btn-wrap" style="display: none; margin-top: 12px">
-            <button class="btn btn-red" onclick="endActiveSession()">
-              END SESSION
+          <button class="btn btn-primary" onclick="createSession()">Create Session</button>
+        </div>
+        <div class="table-wrap">
+          <div class="table-header"><h3>All Sessions</h3><button class="btn btn-ghost btn-sm" onclick="loadSessions()">↻ Refresh</button></div>
+          <table>
+            <thead><tr><th>Code</th><th>Course</th><th>Date</th><th>Occ.</th><th>Present</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody id="sessions-tbody"><tr><td colspan="7"><div class="empty">Loading…</div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- STUDENTS -->
+      <div class="page" id="page-students">
+        <div class="page-title">👤 Students</div>
+        <div class="table-wrap">
+          <div class="table-header"><h3>Registered Students</h3><button class="btn btn-ghost btn-sm" onclick="loadStudents()">↻ Refresh</button></div>
+          <table>
+            <thead><tr><th>Name</th><th>Student ID</th><th>Card UID</th><th>Email</th><th>Active</th><th>Registered</th></tr></thead>
+            <tbody id="students-tbody"><tr><td colspan="6"><div class="empty">Loading…</div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ENROLL -->
+      <div class="page" id="page-enroll">
+        <div class="page-title">✚ Enroll New Student</div>
+        <div class="enroll-grid">
+
+          <!-- Left: form -->
+          <div class="form-card" style="margin-bottom:0">
+            <div class="form-title">Student Details</div>
+            <div class="form-grid" style="grid-template-columns:1fr">
+              <div class="field"><label>Full Name *</label><input id="e-name" placeholder="e.g. John Murphy" /></div>
+              <div class="field"><label>Student ID *</label><input id="e-sid" placeholder="e.g. STU005" /></div>
+              <div class="field"><label>NFC Card UID *</label><input id="e-uid" placeholder="e.g. a1:b2:c3:d4" /></div>
+              <div class="field"><label>Email</label><input id="e-email" placeholder="optional" /></div>
+            </div>
+
+            <button class="btn btn-primary" id="enroll-btn" onclick="submitEnroll()" style="width:100%;margin-top:4px">
+              Enroll Student
             </button>
-          </div>
-        </div>
 
-        <!-- Create session -->
-        <div class="section">
-          <div class="section-label">Create Session</div>
-          <div class="form-group">
-            <label>Session Code</label>
-            <input type="text" id="f-code" placeholder="CS7NS2-LAB-04" />
+            <div class="enroll-status" id="enroll-status"></div>
           </div>
-          <div class="form-group">
-            <label>Course Name</label>
-            <input type="text" id="f-course" placeholder="IoT Lab" />
-          </div>
-          <div class="form-group">
-            <label>Date</label>
-            <input type="date" id="f-date" />
-          </div>
-          <div class="form-group">
-            <label>Lecture No.</label>
-            <input type="number" id="f-occurrence" value="1" min="1" />
-          </div>
-          <button
-            class="btn btn-green"
-            onclick="createSession()"
-            style="margin-top: 4px"
-          >
-            CREATE + START
-          </button>
-        </div>
 
-        <!-- Sessions list -->
-        <div class="section" style="flex: 1">
-          <div class="section-label">All Sessions</div>
-          <div class="sessions-list" id="sessions-list">
-            <div
-              style="
-                font-family: var(--mono);
-                font-size: 11px;
-                color: var(--muted);
-              "
-            >
-              Loading...
+          <!-- Right: photo -->
+          <div class="photo-panel">
+            <div class="photo-title">Face Photo</div>
+
+            <div class="photo-tabs">
+              <button class="photo-tab active" onclick="switchPhotoTab('upload')"  id="tab-upload">⬆ Upload</button>
+              <button class="photo-tab"        onclick="switchPhotoTab('webcam')"  id="tab-webcam">📷 Webcam</button>
             </div>
-          </div>
-        </div>
-      </aside>
 
-      <div class="content">
-        <div>
-          <div class="feed-header">
-            <div>
-              <div class="feed-title" id="feed-title">Attendance Feed</div>
-              <div class="feed-subtitle" id="feed-subtitle">
-                Select a session to view attendance
+            <!-- Upload view -->
+            <div class="photo-view active" id="view-upload">
+              <div class="dropzone" id="dropzone">
+                <input type="file" id="photo-file" accept="image/jpeg,image/png" onchange="onFileSelected(event)" />
+                <div class="dropzone-icon">🖼</div>
+                <div class="dropzone-text"><strong>Click to browse</strong> or drag & drop</div>
+                <div class="dropzone-text" style="margin-top:4px;font-size:11px">JPEG or PNG, face clearly visible</div>
               </div>
             </div>
-            <div class="live-pill" id="live-pill" style="display: none">
-              <div class="live-dot"></div>
-              LIVE
+
+            <!-- Webcam view -->
+            <div class="photo-view" id="view-webcam">
+              <div class="webcam-controls">
+                <button class="btn btn-ghost btn-sm" onclick="startWebcam()" id="btn-start-cam">▶ Start Camera</button>
+                <button class="btn btn-primary btn-sm" onclick="captureWebcam()" id="btn-capture" disabled>📸 Capture</button>
+                <button class="btn btn-ghost btn-sm" onclick="stopWebcam()" id="btn-stop-cam" disabled>■ Stop</button>
+              </div>
+            </div>
+
+            <!-- Preview (shared) -->
+            <div class="photo-preview" id="photo-preview">
+              <video id="webcam-video" autoplay playsinline></video>
+              <canvas id="webcam-canvas"></canvas>
+              <img id="photo-img" alt="preview" />
+              <div class="preview-placeholder" id="preview-placeholder">
+                <div style="font-size:32px;margin-bottom:8px">👤</div>
+                No photo selected
+              </div>
             </div>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Student</th>
-                  <th>UID</th>
-                  <th>Status</th>
-                  <th>Time</th>
-                  <th>Device</th>
-                </tr>
-              </thead>
-              <tbody id="attendance-body">
-                <tr>
-                  <td colspan="6">
-                    <div class="empty-state">
-                      Select or start a session to see attendance
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+
         </div>
       </div>
-    </main>
 
-    <div id="toast"></div>
+    </div>
+  </div>
+</div>
 
-    <script>
-      const API = "http://localhost:3000";
-      let selectedSessionId = null;
-      let activeSessionId = null;
-      let knownRecordIds = new Set();
+<div class="toast" id="toast"></div>
 
-      // Clock
-      setInterval(() => {
-        document.getElementById("clock").textContent =
-          new Date().toLocaleTimeString("en-IE", { hour12: false });
-      }, 1000);
+<script>
+const API = 'http://localhost:3000';
+let photoBlob = null;
+let webcamStream = null;
 
-      // Default date
-      document.getElementById("f-date").value = new Date()
-        .toISOString()
-        .split("T")[0];
+// ── Clock ──
+function updateClock() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-IE', { hour12: false });
+}
+setInterval(updateClock, 1000);
+updateClock();
 
-      // Toast
-      function toast(msg, type = "success") {
-        const el = document.getElementById("toast");
-        el.textContent = msg;
-        el.className = `show ${type}`;
-        setTimeout(() => (el.className = ""), 3000);
-      }
+// ── Toast ──
+function toast(msg, type = 'ok') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast show ${type}`;
+  clearTimeout(el._t);
+  el._t = setTimeout(() => el.classList.remove('show'), 3500);
+}
 
-      function fmtTime(iso) {
-        if (!iso) return "—";
-        return new Date(iso).toLocaleTimeString("en-IE", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-          hour12: false,
-        });
-      }
+// ── Navigation ──
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  document.getElementById('nav-' + id).classList.add('active');
+  if (id === 'sessions') loadSessions();
+  if (id === 'students') loadStudents();
+}
 
-      // Load sessions
-      async function loadSessions() {
-        try {
-          const res = await fetch(`${API}/api/sessions`);
-          const data = await res.json();
-          const active = data.find((s) => s.status === "active");
-          updateActiveSession(active || null);
+// ── API helper ──
+async function api(path, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  return { ok: r.ok, status: r.status, data: await r.json() };
+}
 
-          const list = document.getElementById("sessions-list");
-          if (!data.length) {
-            list.innerHTML =
-              '<div style="font-family:var(--mono);font-size:11px;color:var(--muted);">No sessions yet</div>';
-            return;
-          }
-          list.innerHTML = data
-            .map(
-              (s) => `
-        <div class="session-item ${s.id === selectedSessionId ? "selected" : ""}"
-             onclick="selectSession(${s.id},'${s.session_code}','${s.status}')">
-          <div style="display:flex;align-items:center;justify-content:space-between;">
-            <div class="session-item-code">${s.session_code}</div>
-            <span class="status-badge ${s.status === "active" ? "badge-active" : s.status === "ended" ? "badge-ended" : "badge-none"}"
-                  style="font-size:9px;padding:2px 7px;">${s.status.toUpperCase()}</span>
-          </div>
-          <div class="session-item-meta">${s.course_name} · Lecture ${s.occurrence} · ${s.present_count}/${s.total_students || "?"} present</div>
-        </div>`,
-            )
-            .join("");
-        } catch (e) {
-          console.error(e);
-        }
-      }
+// ── Health ──
+async function checkHealth() {
+  try {
+    const r = await fetch(API + '/');
+    const dot = document.getElementById('api-dot');
+    const txt = document.getElementById('api-status');
+    dot.className = r.ok ? 'dot live' : 'dot';
+    txt.textContent = r.ok ? 'API online' : 'API error';
+  } catch {
+    document.getElementById('api-dot').className = 'dot';
+    document.getElementById('api-status').textContent = 'API offline';
+  }
+}
 
-      function updateActiveSession(session) {
-        const badge = document.getElementById("active-badge");
-        const name = document.getElementById("active-name");
-        const endWrap = document.getElementById("end-btn-wrap");
-        const pill = document.getElementById("live-pill");
+// ── Live feed ──
+async function loadFeedPatched() {
+  try {
+    const [stuRes, sessRes] = await Promise.all([
+      fetch(API + '/api/students').then(r => r.json()),
+      fetch(API + '/api/sessions').then(r => r.json()),
+    ]);
+    const students = Array.isArray(stuRes) ? stuRes.length : 0;
+    document.getElementById('stat-students').textContent = students;
+    const sessions = Array.isArray(sessRes) ? sessRes : [];
+    const active   = sessions.find(s => s.status === 'active');
 
-        if (session) {
-          activeSessionId = session.id;
-          badge.textContent = "ACTIVE";
-          badge.className = "status-badge badge-active";
-          name.textContent = `${session.session_code} — ${session.course_name}`;
-          name.style.color = "var(--text)";
-          endWrap.style.display = "block";
-          document.getElementById("stat-present").textContent =
-            session.present_count;
-          document.getElementById("stat-total").textContent =
-            session.total_students || "—";
-          if (!selectedSessionId || selectedSessionId !== session.id) {
-            selectSession(session.id, session.session_code, "active");
-          }
-          pill.style.display = "flex";
-        } else {
-          activeSessionId = null;
-          badge.textContent = "NONE";
-          badge.className = "status-badge badge-none";
-          name.textContent = "No session running";
-          name.style.color = "var(--muted)";
-          endWrap.style.display = "none";
-          document.getElementById("stat-present").textContent = "—";
-          document.getElementById("stat-total").textContent = "—";
-          pill.style.display = "none";
-        }
-      }
+    if (active) {
+      document.getElementById('ss-name').textContent   = active.course_name;
+      document.getElementById('ss-badge').textContent  = 'active';
+      document.getElementById('ss-badge').className    = 'badge active';
+      document.getElementById('ss-stats').style.display = 'flex';
+      document.getElementById('ss-present').textContent = active.present_count;
+      document.getElementById('ss-total').textContent   = active.total_students || '∞';
+    } else {
+      document.getElementById('ss-name').textContent    = 'No active session';
+      document.getElementById('ss-badge').textContent   = 'idle';
+      document.getElementById('ss-badge').className     = 'badge none';
+      document.getElementById('ss-stats').style.display = 'none';
+    }
 
-      function selectSession(id, code, status) {
-        selectedSessionId = id;
-        document.getElementById("feed-title").textContent = code;
-        document.getElementById("feed-subtitle").textContent =
-          `Session ID: ${id}`;
-        document.getElementById("live-pill").style.display =
-          status === "active" ? "flex" : "none";
-        knownRecordIds.clear();
-        loadAttendance(true);
-        loadSessions();
-      }
+    const recent = sessions.find(s => s.status === 'active') || sessions.find(s => s.status === 'ended');
+    if (recent) {
+      const attRes = await fetch(API + `/api/sessions/${recent.id}/attendance`).then(r => r.json());
+      const taps   = Array.isArray(attRes) ? attRes : [];
+      document.getElementById('stat-taps').textContent    = taps.length;
+      document.getElementById('stat-present').textContent = taps.filter(t => t.status === 'present').length;
+      document.getElementById('stat-denied').textContent  = taps.filter(t => t.status === 'denied').length;
 
-      async function loadAttendance(reset = false) {
-        if (!selectedSessionId) return;
-        try {
-          const res = await fetch(
-            `${API}/api/sessions/${selectedSessionId}/attendance`,
-          );
-          const rows = await res.json();
-          const tbody = document.getElementById("attendance-body");
+      const feed = document.getElementById('feed-list');
+      feed.innerHTML = taps.length === 0
+        ? '<div class="empty">No taps yet. Waiting for cards…</div>'
+        : taps.slice().reverse().slice(0, 50).map(t => {
+            const time = new Date(t.nfc_timestamp).toLocaleTimeString('en-IE', { hour12: false });
+            const icon = t.status === 'present' ? '✓' : '✗';
+            return `<div class="feed-entry">
+              <div class="feed-icon ${t.status}">${icon}</div>
+              <div class="feed-body">
+                <div class="feed-name">${t.student_name}</div>
+                <div class="feed-uid">${t.uid} · ${t.device || 'ESP32'}</div>
+              </div>
+              <div class="feed-time">${time}</div>
+            </div>`;
+          }).join('');
+    } else {
+      ['stat-taps','stat-present','stat-denied'].forEach(id => document.getElementById(id).textContent = '0');
+      document.getElementById('feed-list').innerHTML =
+        '<div class="empty">Create and start a session to begin tracking.</div>';
+    }
+    document.getElementById('feed-updated').textContent =
+      'updated ' + new Date().toLocaleTimeString('en-IE', { hour12: false });
+  } catch(e) { console.error(e); }
+}
 
-          if (!rows.length) {
-            if (reset)
-              tbody.innerHTML = `<tr><td colspan="6"><div class="empty-state">Waiting for card taps…</div></td></tr>`;
-            return;
-          }
-
-          if (reset) {
-            knownRecordIds.clear();
-            tbody.innerHTML = "";
-            rows.forEach((r, i) => {
-              knownRecordIds.add(r.record_id);
-              tbody.insertAdjacentHTML("beforeend", buildRow(r, i + 1, false));
-            });
-          } else {
-            rows.forEach((r, i) => {
-              if (!knownRecordIds.has(r.record_id)) {
-                knownRecordIds.add(r.record_id);
-                const empty = tbody.querySelector(".empty-state");
-                if (empty) empty.closest("tr").remove();
-                tbody.insertAdjacentHTML(
-                  "afterbegin",
-                  buildRow(r, knownRecordIds.size, true),
-                );
-              }
-            });
-          }
-
-          if (selectedSessionId === activeSessionId) {
-            document.getElementById("stat-present").textContent = rows.filter(
-              (r) => r.status === "present",
-            ).length;
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      }
-
-      function buildRow(r, idx, isNew) {
-        const status =
-          r.status === "present"
-            ? '<span class="status-present">● PRESENT</span>'
-            : '<span class="status-denied">✕ DENIED</span>';
-        return `<tr class="${isNew ? "new-row" : ""}">
-      <td style="color:var(--muted);font-size:11px;">${String(idx).padStart(2, "0")}</td>
-      <td style="font-weight:600;">${r.student_name}</td>
-      <td style="color:var(--muted);font-size:11px;">${r.uid}</td>
-      <td>${status}</td>
-      <td style="color:var(--muted);font-size:11px;">${fmtTime(r.nfc_timestamp)}</td>
-      <td style="color:var(--muted);font-size:11px;">${r.device || "—"}</td>
+// ── Sessions ──
+async function loadSessions() {
+  const r = await api('/api/sessions');
+  const tbody = document.getElementById('sessions-tbody');
+  if (!r.ok || !r.data.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty">No sessions yet.</div></td></tr>'; return;
+  }
+  tbody.innerHTML = r.data.map(s => {
+    const actions = s.status === 'created'
+      ? `<button class="btn btn-success btn-sm" onclick="startSession(${s.id})">▶ Start</button>`
+      : s.status === 'active'
+      ? `<button class="btn btn-danger btn-sm" onclick="endSession(${s.id})">■ End</button>
+         <button class="btn btn-ghost btn-sm" style="margin-left:4px" onclick="viewAttendance(${s.id},'${s.session_code}')">View</button>`
+      : `<button class="btn btn-ghost btn-sm" onclick="viewAttendance(${s.id},'${s.session_code}')">View</button>`;
+    return `<tr>
+      <td class="mono">${s.session_code}</td><td>${s.course_name}</td>
+      <td class="mono">${s.session_date||'—'}</td><td class="mono text-muted">#${s.occurrence}</td>
+      <td class="mono"><span style="color:var(--green)">${s.present_count}</span> / ${s.total_students||'∞'}</td>
+      <td><span class="badge ${s.status}">${s.status}</span></td>
+      <td><div class="actions-row">${actions}</div></td>
     </tr>`;
-      }
+  }).join('');
+}
 
-      async function createSession() {
-        const code = document.getElementById("f-code").value.trim();
-        const course = document.getElementById("f-course").value.trim();
-        const date = document.getElementById("f-date").value;
-        const occurrence = parseInt(
-          document.getElementById("f-occurrence").value,
-        );
-        if (!code || !course || !date) {
-          toast("Fill in all fields", "error");
-          return;
-        }
-        if (activeSessionId) {
-          toast("End the current active session first", "error");
-          return;
-        }
-        try {
-          const r1 = await fetch(`${API}/api/sessions`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              session_code: code,
-              course_name: course,
-              session_date: date,
-              occurrence,
-            }),
-          });
-          const d1 = await r1.json();
-          if (!r1.ok) {
-            toast(d1.error || "Create failed", "error");
-            return;
-          }
-          const r2 = await fetch(`${API}/api/sessions/${d1.session.id}/start`, {
-            method: "PUT",
-          });
-          const d2 = await r2.json();
-          if (!r2.ok) {
-            toast(d2.error || "Start failed", "error");
-            return;
-          }
-          toast(`Session ${code} started!`);
-          document.getElementById("f-code").value = "";
-          await loadSessions();
-        } catch (e) {
-          toast("Network error", "error");
-        }
-      }
+async function createSession() {
+  const code = document.getElementById('f-code').value.trim();
+  const course = document.getElementById('f-course').value.trim();
+  const date  = document.getElementById('f-date').value;
+  const occur = parseInt(document.getElementById('f-occur').value) || 1;
+  if (!code || !course || !date) { toast('Fill in all required fields', 'err'); return; }
+  const r = await api('/api/sessions', 'POST', { session_code: code, course_name: course, session_date: date, occurrence: occur });
+  if (r.ok) { toast(`Session "${code}" created`); ['f-code','f-course','f-occur'].forEach(id => document.getElementById(id).value=''); loadSessions(); }
+  else toast(r.data.error || 'Create failed', 'err');
+}
 
-      async function endActiveSession() {
-        if (!activeSessionId) return;
-        try {
-          const res = await fetch(
-            `${API}/api/sessions/${activeSessionId}/end`,
-            { method: "PUT" },
-          );
-          const data = await res.json();
-          if (!res.ok) {
-            toast(data.error || "End failed", "error");
-            return;
-          }
-          toast(`Session ended — ${data.session.present_count} present`);
-          await loadSessions();
-        } catch (e) {
-          toast("Network error", "error");
-        }
-      }
+async function startSession(id) {
+  const r = await api(`/api/sessions/${id}/start`, 'PUT');
+  if (r.ok) { toast('Session started'); loadSessions(); loadFeedPatched(); }
+  else toast(r.data.error || 'Start failed', 'err');
+}
 
-      async function refresh() {
-        await loadSessions();
-        await loadAttendance(false);
-      }
+async function endSession(id) {
+  const r = await api(`/api/sessions/${id}/end`, 'PUT');
+  if (r.ok) { toast(`Session ended — ${r.data.session.present_count} present`); loadSessions(); loadFeedPatched(); }
+  else toast(r.data.error || 'End failed', 'err');
+}
 
-      loadSessions();
-      setInterval(refresh, 5000);
-    </script>
-  </body>
+async function viewAttendance(id, code) {
+  const r = await api(`/api/sessions/${id}/attendance`);
+  if (!r.ok) { toast('Could not load attendance', 'err'); return; }
+  showPage('live');
+  const feed = document.getElementById('feed-list');
+  feed.innerHTML = !r.data.length
+    ? `<div class="empty">No taps for session "${code}".</div>`
+    : r.data.map(t => {
+        const time = new Date(t.nfc_timestamp).toLocaleTimeString('en-IE', { hour12: false });
+        return `<div class="feed-entry">
+          <div class="feed-icon ${t.status}">${t.status==='present'?'✓':'✗'}</div>
+          <div class="feed-body"><div class="feed-name">${t.student_name}</div><div class="feed-uid">${t.uid}</div></div>
+          <div class="feed-time">${time}</div>
+        </div>`;
+      }).join('');
+  document.getElementById('feed-updated').textContent = `session: ${code}`;
+}
+
+// ── Students ──
+async function loadStudents() {
+  const r = await api('/api/students');
+  const tbody = document.getElementById('students-tbody');
+  if (!r.ok || !r.data.length) {
+    tbody.innerHTML = '<tr><td colspan="6"><div class="empty">No students registered.</div></td></tr>'; return;
+  }
+  tbody.innerHTML = r.data.map(s => `
+    <tr>
+      <td><strong>${s.name}</strong></td>
+      <td class="mono">${s.student_id}</td>
+      <td class="mono text-accent">${s.uid}</td>
+      <td class="text-muted">${s.email||'—'}</td>
+      <td>${s.active?'<span class="text-green">●</span>':'<span class="text-muted">○</span>'}</td>
+      <td class="mono text-muted">${s.registered_at?s.registered_at.slice(0,10):'—'}</td>
+    </tr>`).join('');
+}
+
+// ── Enroll ──────────────────────────────────────────────────
+
+function switchPhotoTab(tab) {
+  document.querySelectorAll('.photo-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.photo-view').forEach(v => v.classList.remove('active'));
+  document.getElementById('tab-'  + tab).classList.add('active');
+  document.getElementById('view-' + tab).classList.add('active');
+  if (tab !== 'webcam') stopWebcam();
+}
+
+// File upload
+function onFileSelected(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  photoBlob = file;
+  const url = URL.createObjectURL(file);
+  showPhotoPreview('img', url);
+  toast('Photo selected');
+}
+
+// Drag & drop
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) {
+    photoBlob = file;
+    showPhotoPreview('img', URL.createObjectURL(file));
+    toast('Photo selected');
+  }
+});
+
+// Webcam
+async function startWebcam() {
+  try {
+    webcamStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    const video = document.getElementById('webcam-video');
+    video.srcObject = webcamStream;
+    showPhotoPreview('video', null);
+    document.getElementById('btn-capture').disabled  = false;
+    document.getElementById('btn-stop-cam').disabled = false;
+    document.getElementById('btn-start-cam').disabled = true;
+  } catch(e) {
+    toast('Camera access denied — check browser permissions', 'err');
+  }
+}
+
+function captureWebcam() {
+  const video  = document.getElementById('webcam-video');
+  const canvas = document.getElementById('webcam-canvas');
+  canvas.width  = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob(blob => {
+    photoBlob = blob;
+    showPhotoPreview('canvas', null);
+    toast('Photo captured');
+  }, 'image/jpeg', 0.92);
+  stopWebcam();
+}
+
+function stopWebcam() {
+  if (webcamStream) {
+    webcamStream.getTracks().forEach(t => t.stop());
+    webcamStream = null;
+  }
+  document.getElementById('btn-capture').disabled   = true;
+  document.getElementById('btn-stop-cam').disabled  = true;
+  document.getElementById('btn-start-cam').disabled = false;
+}
+
+function showPhotoPreview(type, src) {
+  const img    = document.getElementById('photo-img');
+  const video  = document.getElementById('webcam-video');
+  const canvas = document.getElementById('webcam-canvas');
+  const ph     = document.getElementById('preview-placeholder');
+  [img, video, canvas].forEach(el => el.classList.remove('visible'));
+  ph.style.display = 'none';
+  if (type === 'img')    { img.src = src;  img.classList.add('visible'); }
+  if (type === 'video')  { video.classList.add('visible'); }
+  if (type === 'canvas') { canvas.classList.add('visible'); }
+}
+
+function setEnrollStatus(msg, type) {
+  const el = document.getElementById('enroll-status');
+  el.innerHTML = msg;
+  el.className = `enroll-status show ${type}`;
+}
+
+async function submitEnroll() {
+  const name  = document.getElementById('e-name').value.trim();
+  const sid   = document.getElementById('e-sid').value.trim();
+  const uid   = document.getElementById('e-uid').value.trim();
+  const email = document.getElementById('e-email').value.trim();
+
+  if (!name || !sid || !uid) {
+    toast('Name, Student ID and UID are required', 'err'); return;
+  }
+  if (!photoBlob) {
+    toast('Please select or capture a photo', 'err'); return;
+  }
+
+  const btn = document.getElementById('enroll-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Enrolling…';
+  setEnrollStatus('<span class="spinner"></span> Registering student and indexing face…', 'ok');
+
+  try {
+    const fd = new FormData();
+    fd.append('name',       name);
+    fd.append('student_id', sid);
+    fd.append('uid',        uid);
+    fd.append('email',      email);
+    fd.append('photo',      photoBlob, 'photo.jpg');
+
+    const r = await fetch(API + '/api/enroll', {
+      method: 'POST',
+      body: fd
+      // No Content-Type header — browser sets it with boundary automatically
+    });
+    const data = await r.json();
+
+    if (r.status === 201) {
+      setEnrollStatus(`✓ <strong>${name}</strong> enrolled successfully. Face indexed in Rekognition.`, 'ok');
+      toast(`${name} enrolled`);
+      // Clear form
+      ['e-name','e-sid','e-uid','e-email'].forEach(id => document.getElementById(id).value = '');
+      photoBlob = null;
+      document.getElementById('photo-img').classList.remove('visible');
+      document.getElementById('preview-placeholder').style.display = '';
+
+    } else if (r.status === 207) {
+      setEnrollStatus(`⚠ <strong>${name}</strong> registered in DB but face indexing failed.<br><small>${data.warning || ''}</small>`, 'warn');
+      toast('Partial enrollment — check face backend', 'warn');
+
+    } else {
+      setEnrollStatus(`✗ ${data.error || 'Enrollment failed'}`, 'err');
+      toast(data.error || 'Enrollment failed', 'err');
+    }
+
+  } catch(e) {
+    setEnrollStatus(`✗ Network error: ${e.message}`, 'err');
+    toast('Network error', 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Enroll Student';
+  }
+}
+
+// ── Polling ──
+document.getElementById('f-date').valueAsDate = new Date();
+setInterval(() => { loadFeedPatched(); checkHealth(); }, 5000);
+loadFeedPatched();
+checkHealth();
+</script>
+</body>
 </html>
