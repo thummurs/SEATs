@@ -18,8 +18,8 @@
 const char* WIFI_SSID = "Cumberland";
 const char* WIFI_PASS = "Cumberland7";
 
-// --- API Server URL (your MacBook's IP on the same WiFi) ---
-const char* API_URL = "http://192.168.0.74:3000";
+const char* API_URL = "https://seats-production.up.railway.app";
+const char* API_KEY = "c32d2eb7db57fb3cf743ca72c53cd8971579cbba99c53e77f80ea282405170d3";
 
 MFRC522 rfid(SS_PIN, RST_PIN);
 
@@ -168,6 +168,7 @@ void sendToAPI(String uid, String name) {
 
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-API-Key", API_KEY);
   http.setTimeout(5000);
 
   String json = "{";

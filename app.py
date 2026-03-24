@@ -19,6 +19,17 @@ import psycopg2.extras
 from flask import Flask, request, jsonify, send_file
 from dotenv import load_dotenv
 
+from flask_cors import CORS
+
+# Only allow your dashboard's origin
+CORS(app, resources={
+    r"/api/*": {"origins": [
+        "http://localhost:3000",
+        "https://seats-production.up.railway.app"
+    ]}
+})
+
+
 # ── Load .env ──────────────────────────────
 load_dotenv()
 
@@ -35,6 +46,15 @@ log = logging.getLogger(__name__)
 
 # ── App ────────────────────────────────────
 app = Flask(__name__)
+
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=["200 per day", "50 per hour"]
+)
 
 # ── Config from .env ───────────────────────
 DB_CONFIG = {
@@ -116,6 +136,7 @@ def dashboard():
 
 @app.route("/api/attendance", methods=["POST"])
 @require_api_key
+@limiter.limit("30 per minute")
 def record_attendance():
     data = request.get_json(silent=True)
     if not data:
