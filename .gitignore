@@ -1,0 +1,26 @@
+# Secrets — NEVER commit these
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+
+# Logs
+seats.log
+*.log
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Arduino build artifacts
+build/
+*.elf
+*.bin
