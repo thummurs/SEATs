@@ -19,16 +19,6 @@ import psycopg2.extras
 from flask import Flask, request, jsonify, send_file
 from dotenv import load_dotenv
 
-from flask_cors import CORS
-
-# Only allow your dashboard's origin
-CORS(app, resources={
-    r"/api/*": {"origins": [
-        "http://localhost:3000",
-        "https://seats-production.up.railway.app"
-    ]}
-})
-
 
 # ── Load .env ──────────────────────────────
 load_dotenv()
@@ -46,6 +36,16 @@ log = logging.getLogger(__name__)
 
 # ── App ────────────────────────────────────
 app = Flask(__name__)
+
+from flask_cors import CORS
+
+# Only allow your dashboard's origin
+CORS(app, resources={
+    r"/api/*": {"origins": [
+        "http://localhost:3000",
+        "https://seats-production.up.railway.app"
+    ]}
+})
 
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
