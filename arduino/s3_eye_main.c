@@ -17,7 +17,7 @@
 #include "nvs_flash.h"
 #include "esp_http_client.h"
 #include "esp_camera.h"
-#include "cJSON.h"
+#include "esp_crt_bundle.h"
 
 static const char* TAG = "SEATs-EYE";
 
@@ -25,7 +25,7 @@ static const char* TAG = "SEATs-EYE";
 #define WIFI_SSID        "Cumberland"
 #define WIFI_PASS        "Cumberland7"
 #define FLASK_API_URL    "https://seats-production-4c03.up.railway.app"
-#define FASTAPI_URL      "http://192.168.0.74:8000"
+#define FASTAPI_URL      "https://seats-face-api-production.up.railway.app"
 #define API_KEY          "c32d2eb7db57fb3cf743ca72c53cd8971579cbba99c53e77f80ea282405170d3"
 
 // How often to poll Flask for pending verifications (ms)
@@ -126,8 +126,8 @@ static void init_camera(void) {
         .pixel_format = PIXFORMAT_JPEG,
         .frame_size   = FRAMESIZE_QVGA,
         .jpeg_quality = 12,
-        .fb_count     = 2,
-        .fb_location  = CAMERA_FB_IN_PSRAM,
+        .fb_count     = 1,
+        .fb_location  = CAMERA_FB_IN_DRAM,
         .grab_mode    = CAMERA_GRAB_LATEST,
     };
 
@@ -144,28 +144,37 @@ static void init_camera(void) {
 // HTTP helpers
 // ============================================
 
-// Simple GET — returns malloc'd body string, caller must free
 static char* http_get(const char* url) {
+    static char response_buf[2048];
+    memset(response_buf, 0, sizeof(response_buf));
+
     esp_http_client_config_t config = {
-        .url            = url,
-        .timeout_ms     = 5000,
-        .skip_cert_common_name_check = true,  // for Railway HTTPS
+        .url                         = url,
+        .timeout_ms                  = 5000,
+        .skip_cert_common_name_check = true,
+        .crt_bundle_attach           = esp_crt_bundle_attach,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     esp_http_client_set_header(client, "X-API-Key", API_KEY);
 
-    static char response_buf[2048];
-    memset(response_buf, 0, sizeof(response_buf));
-
-    esp_err_t err = esp_http_client_perform(client);
-    if (err == ESP_OK) {
-        int len = esp_http_client_get_content_length(client);
-        ESP_LOGI(TAG, "GET %s → %d (%d bytes)", url,
-                 esp_http_client_get_status_code(client), len);
-        esp_http_client_read_response(client, response_buf, sizeof(response_buf) - 1);
-    } else {
-        ESP_LOGE(TAG, "GET failed: %s", esp_err_to_name(err));
+    esp_err_t err = esp_http_client_open(client, 0);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "GET failed to open: %s", esp_err_to_name(err));
+        esp_http_client_cleanup(client);
+        return response_buf;
     }
+
+    int content_length = esp_http_client_fetch_headers(client);
+    int status = esp_http_client_get_status_code(client);
+    ESP_LOGI(TAG, "GET %s → %d (%d bytes)", url, status, content_length);
+
+    int data_read = esp_http_client_read_response(client, response_buf, sizeof(response_buf) - 1);
+    if (data_read >= 0) {
+        response_buf[data_read] = '\0';
+    }
+    ESP_LOGI(TAG, "Response body: %s", response_buf);
+
+    esp_http_client_close(client);
     esp_http_client_cleanup(client);
     return response_buf;
 }
@@ -174,10 +183,12 @@ static char* http_get(const char* url) {
 static int http_post_jpeg(const char* url, const char* verification_id,
                            uint8_t* data, size_t len) {
     esp_http_client_config_t config = {
-        .url        = url,
-        .method     = HTTP_METHOD_POST,
-        .timeout_ms = 10000,
+        .url                        = url,
+        .method                     = HTTP_METHOD_POST,
+        .timeout_ms                 = 10000,
         .skip_cert_common_name_check = true,
+        .use_global_ca_store        = false,
+        .crt_bundle_attach          = esp_crt_bundle_attach,
     };
     esp_http_client_handle_t client = esp_http_client_init(&config);
     esp_http_client_set_header(client, "Content-Type",       "image/jpeg");
@@ -250,26 +261,31 @@ static void polling_task(void* pvParameters) {
 
         char* body = http_get(url);
         if (body && strlen(body) > 0) {
-            cJSON* json = cJSON_Parse(body);
-            if (json) {
-                cJSON* pending = cJSON_GetObjectItem(json, "pending");
-                if (cJSON_IsTrue(pending)) {
-                    cJSON* vid  = cJSON_GetObjectItem(json, "verification_id");
-                    cJSON* name = cJSON_GetObjectItem(json, "student_name");
-
-                    char vid_str[16] = "0";
-                    if (vid && cJSON_IsNumber(vid)) {
-                        snprintf(vid_str, sizeof(vid_str), "%d", (int)vid->valuedouble);
-                    }
-                    const char* name_str = (name && cJSON_IsString(name))
-                                         ? name->valuestring : "Unknown";
-
-                    capture_and_send(vid_str, name_str);
-
-                    // Small delay after capture to avoid double-sending
-                    vTaskDelay(pdMS_TO_TICKS(2000));
+            char* pending_str = strstr(body, "true");
+            if (pending_str) {
+                // Extract verification_id
+                char* vid_ptr = strstr(body, "\"verification_id\":");
+                int vid = 0;
+                if (vid_ptr) {
+                    vid = atoi(vid_ptr + 18);
                 }
-                cJSON_Delete(json);
+                // Extract student_name
+                char student_name[64] = "Unknown";
+                char* name_ptr = strstr(body, "\"student_name\":\"");
+                if (name_ptr) {
+                    name_ptr += 16;
+                    char* end = strchr(name_ptr, '"');
+                    if (end) {
+                        int len = end - name_ptr;
+                        if (len > 63) len = 63;
+                        strncpy(student_name, name_ptr, len);
+                        student_name[len] = '\0';
+                    }
+                }
+                char vid_str[16];
+                snprintf(vid_str, sizeof(vid_str), "%d", vid);
+                capture_and_send(vid_str, student_name);
+                vTaskDelay(pdMS_TO_TICKS(2000));
             }
         }
 
