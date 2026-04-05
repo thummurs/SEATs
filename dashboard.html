@@ -971,8 +971,41 @@
                     ><input id="e-sid" placeholder="e.g. STU005" />
                   </div>
                   <div class="field">
-                    <label>NFC Card UID *</label
-                    ><input id="e-uid" placeholder="e.g. a1:b2:c3:d4" />
+                    <label>NFC Card UID *</label>
+                    <div style="display: flex; gap: 8px; align-items: center">
+                      <input
+                        id="e-uid"
+                        placeholder="Tap card to scan..."
+                        readonly
+                        style="
+                          flex: 1;
+                          background: var(--bg);
+                          border: 1px solid var(--border2);
+                          border-radius: 4px;
+                          padding: 8px 12px;
+                          color: var(--accent);
+                          font-family: var(--font-mono);
+                          font-size: 13px;
+                        "
+                      />
+                      <button
+                        class="btn btn-ghost"
+                        id="scan-btn"
+                        onclick="startCardScan()"
+                        type="button"
+                      >
+                        📡 Tap Card
+                      </button>
+                    </div>
+                    <div
+                      id="scan-status"
+                      style="
+                        font-family: var(--font-mono);
+                        font-size: 11px;
+                        color: var(--muted);
+                        margin-top: 4px;
+                      "
+                    ></div>
                   </div>
                   <div class="field">
                     <label>Email</label
@@ -1461,6 +1494,60 @@
         const el = document.getElementById("enroll-status");
         el.innerHTML = msg;
         el.className = `enroll-status show ${type}`;
+      }
+
+      let _scanInterval = null;
+
+      async function startCardScan() {
+        const btn = document.getElementById("scan-btn");
+        const status = document.getElementById("scan-status");
+        const uidInput = document.getElementById("e-uid");
+
+        // Start scan mode on Flask
+        const r = await fetch(API + "/api/scan/start", {
+          method: "POST",
+          headers: { "X-API-Key": API_KEY },
+        });
+        if (!r.ok) {
+          toast("Could not start scan mode", "err");
+          return;
+        }
+
+        // Update UI
+        btn.disabled = true;
+        btn.textContent = "⏳ Waiting...";
+        uidInput.value = "";
+        status.textContent = "Tap your NFC card on the reader now...";
+
+        // Poll for result every second for up to 30 seconds
+        let attempts = 0;
+        _scanInterval = setInterval(async () => {
+          attempts++;
+          if (attempts > 30) {
+            clearInterval(_scanInterval);
+            btn.disabled = false;
+            btn.textContent = "📡 Tap Card";
+            status.textContent = "Scan timed out. Try again.";
+            status.style.color = "var(--red)";
+            return;
+          }
+
+          const res = await fetch(API + "/api/scan/result", {
+            headers: { "X-API-Key": API_KEY },
+          });
+          const data = await res.json();
+
+          if (data.found) {
+            clearInterval(_scanInterval);
+            uidInput.value = data.uid;
+            btn.disabled = false;
+            btn.textContent = "✓ Scanned";
+            btn.style.color = "var(--green)";
+            status.textContent = `Card detected: ${data.uid}`;
+            status.style.color = "var(--green)";
+            toast(`Card scanned: ${data.uid}`);
+          }
+        }, 1000);
       }
 
       async function submitEnroll() {

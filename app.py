@@ -51,6 +51,8 @@ if not API_KEY:
 
 FASTAPI_URL = os.getenv("FASTAPI_URL", "http://localhost:8000")
 
+_scan_state = {"active": False, "uid": None}
+
 # ── Helpers ────────────────────────────────
 
 def get_db():
@@ -126,6 +128,13 @@ def record_attendance():
     parts = uid.split(":")
     if not (3 <= len(parts) <= 7):
         return jsonify({"error": "Invalid UID format"}), 400
+    
+    # If scan mode is active, capture this UID for enrollment
+    if _scan_state["active"]:
+        _scan_state["uid"] = uid
+        _scan_state["active"] = False
+        log.info(f"Scan captured: {uid}")
+        return jsonify({"status": "scan_captured", "uid": uid}), 200
 
     conn = get_db()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
@@ -727,6 +736,24 @@ def enroll_student():
             "student": serialize(student),
             "warning": str(e)
         }), 207
+    
+@app.route("/api/scan/start", methods=["POST"])
+@require_api_key
+def scan_start():
+    _scan_state["active"] = True
+    _scan_state["uid"] = None
+    log.info("Card scan mode activated")
+    return jsonify({"message": "Scan mode active — tap card now"}), 200
+
+@app.route("/api/scan/result", methods=["GET"])
+@require_api_key
+def scan_result():
+    if _scan_state["uid"]:
+        uid = _scan_state["uid"]
+        _scan_state["active"] = False
+        _scan_state["uid"] = None
+        return jsonify({"found": True, "uid": uid}), 200
+    return jsonify({"found": False}), 200
 
 
 # ── Run ─────────────────────────────────────
