@@ -97,7 +97,11 @@ def health():
 
 @app.route("/dashboard")
 def dashboard():
-    return send_file("dashboard.html")
+    with open("dashboard.html", "r") as f:
+        html = f.read()
+    # Inject the API key at serve time so it never sits in the file
+    html = html.replace("__API_KEY_PLACEHOLDER__", API_KEY)
+    return html, 200, {"Content-Type": "text/html"}
 
 
 # ── Attendance (NFC tap) ────────────────────
@@ -723,14 +727,6 @@ def enroll_student():
             "student": serialize(student),
             "warning": str(e)
         }), 207
-    
-@app.route("/dashboard")
-def dashboard():
-    with open("dashboard.html", "r") as f:
-        html = f.read()
-    # Inject the API key at serve time so it never sits in the file
-    html = html.replace("__API_KEY_PLACEHOLDER__", API_KEY)
-    return html, 200, {"Content-Type": "text/html"}
 
 
 # ── Run ─────────────────────────────────────
