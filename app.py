@@ -311,6 +311,22 @@ def face_result():
             conn.close()
             return jsonify({"error": "Verification not found or already resolved"}), 404
 
+        uid = verification["uid"]
+
+        # ── Identity check ──────────────────────────────────────
+        # Ensure the face that matched belongs to the student who tapped
+        if matched and rekognition_id:
+            cur.execute("SELECT student_id FROM students WHERE uid = %s", (uid,))
+            student_row = cur.fetchone()
+            if student_row and rekognition_id != student_row["student_id"]:
+                log.warning(
+                    f"Face mismatch: card belongs to {student_row['student_id']} "
+                    f"but face matched {rekognition_id} — denying"
+                )
+                matched = False
+                similarity = 0.0
+        # ────────────────────────────────────────────────────────
+
         face_status = "verified" if matched else "failed"
 
         # Update face_verifications
@@ -323,7 +339,6 @@ def face_result():
         # Write final attendance record
         record_id    = generate_record_id()
         att_status   = "present" if matched else "denied"
-        uid          = verification["uid"]
         student_name = verification["student_name"]
         session_id   = verification["session_id"]
 
@@ -350,9 +365,9 @@ def face_result():
         log.info(f"Face {'VERIFIED' if matched else 'FAILED'}: {student_name} ({uid}) similarity={similarity:.1f}%")
 
         return jsonify({
-            "status":    att_status,
-            "name":      student_name,
-            "record_id": record_id,
+            "status":     att_status,
+            "name":       student_name,
+            "record_id":  record_id,
             "similarity": similarity
         }), 201
 
@@ -363,7 +378,6 @@ def face_result():
     finally:
         cur.close()
         conn.close()
-
 
 @app.route("/api/attendance/status/<uid>", methods=["GET"])
 @require_api_key
