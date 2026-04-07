@@ -1217,7 +1217,13 @@
             fetch(API + "/api/students", { headers }).then((r) => r.json()),
             fetch(API + "/api/sessions", { headers }).then((r) => r.json()),
           ]);
-          const students = Array.isArray(stuRes) ? stuRes.length : 0;
+          let students = Array.isArray(stuRes) ? stuRes.length : 0;
+          // If active session has a course filter, show only students in that course
+          if (active && active.course) {
+            students = Array.isArray(stuRes)
+              ? stuRes.filter((s) => s.course === active.course).length
+              : 0;
+          }
           document.getElementById("stat-students").textContent = students;
           const sessions = Array.isArray(sessRes) ? sessRes : [];
           const active = sessions.find((s) => s.status === "active");
@@ -1275,6 +1281,7 @@
                         face_mismatch: "Face does not match card holder",
                         low_similarity: "Face similarity too low",
                         unknown_card: "Card not registered",
+                        wrong_course: "Student not enrolled in this course",
                       };
                       const reason = t.denial_reason
                         ? reasonMap[t.denial_reason] || t.denial_reason

@@ -139,7 +139,7 @@ def record_attendance():
     parts = uid.split(":")
     if not (3 <= len(parts) <= 7):
         return jsonify({"error": "Invalid UID format"}), 400
-    
+
     # If scan mode is active, capture this UID for enrollment
     if _scan_state["active"]:
         _scan_state["uid"] = uid
@@ -151,11 +151,10 @@ def record_attendance():
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         # 1. Check student exists
-        cur.execute("SELECT name, active FROM students WHERE uid = %s", (uid,))
+        cur.execute("SELECT name, active, course FROM students WHERE uid = %s", (uid,))
         student = cur.fetchone()
 
         if not student or not student["active"]:
-            # Unknown or deactivated card — deny immediately, no face check
             record_id = generate_record_id()
             cur.execute("""
                 SELECT id, occurrence FROM sessions
@@ -167,25 +166,43 @@ def record_attendance():
 
             cur.execute("""
                 INSERT INTO attendance
-                    (record_id, uid, student_name, session_id, occurrence, status, device)
-                VALUES (%s, %s, %s, %s, %s, 'denied', %s)
+                    (record_id, uid, student_name, session_id, occurrence, status, device, denial_reason)
+                VALUES (%s, %s, %s, %s, %s, 'denied', %s, 'unknown_card')
             """, (record_id, uid, "Unknown", session_id, occurrence, device))
             conn.commit()
             log.info(f"NFC DENIED (unknown): {uid}")
             return jsonify({"status": "denied", "reason": "unknown_card"}), 200
 
-        student_name = student["name"]
+        student_name   = student["name"]
+        student_course = student["course"]
 
         # 2. Find active session
         cur.execute("""
-            SELECT id, occurrence FROM sessions
+            SELECT id, occurrence, course FROM sessions
             WHERE status = 'active' ORDER BY start_time DESC LIMIT 1
         """)
         session    = cur.fetchone()
         session_id = session["id"]         if session else None
         occurrence = session["occurrence"] if session else None
 
-        # 3. Check for duplicate tap in same session
+        # 3. Course filter check
+        if session and session.get("course"):
+            if student_course != session["course"]:
+                record_id = generate_record_id()
+                cur.execute("""
+                    INSERT INTO attendance
+                        (record_id, uid, student_name, session_id, occurrence, status, device, denial_reason)
+                    VALUES (%s, %s, %s, %s, %s, 'denied', %s, 'wrong_course')
+                """, (record_id, uid, student_name, session_id, occurrence, device))
+                conn.commit()
+                log.info(f"NFC DENIED (wrong course): {student_name} is '{student_course}', session requires '{session['course']}'")
+                return jsonify({
+                    "status": "denied",
+                    "reason": "wrong_course",
+                    "message": f"Student is enrolled in {student_course}, not {session['course']}"
+                }), 200
+
+        # 4. Check for duplicate tap in same session
         if session_id:
             cur.execute("""
                 SELECT id FROM attendance
@@ -199,7 +216,7 @@ def record_attendance():
                     "name":    student_name
                 }), 200
 
-        # 4. Cancel any stale pending verifications for this UID
+        # 5. Cancel any stale pending verifications for this UID
         cur.execute("""
             UPDATE face_verifications
             SET status = 'timeout'
@@ -207,7 +224,7 @@ def record_attendance():
               AND created_at < NOW() - INTERVAL '%s seconds'
         """, (uid, FACE_TIMEOUT_SECONDS))
 
-        # 5. Create a new pending face verification
+        # 6. Create a new pending face verification
         cur.execute("""
             INSERT INTO face_verifications (uid, student_name, session_id)
             VALUES (%s, %s, %s)
