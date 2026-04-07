@@ -891,6 +891,19 @@
                   <label>Occurrence (lecture #)</label
                   ><input id="f-occur" type="number" placeholder="1" min="1" />
                 </div>
+                <div class="field">
+                  <label>Course Filter (optional)</label>
+                  <select id="f-course-filter">
+                    <option value="">All students</option>
+                    <option>MSc Computer Science</option>
+                    <option>MSc Artificial Intelligence</option>
+                    <option>MSc Finance</option>
+                    <option>MSc Data Analytics</option>
+                    <option>MSc Business Analytics</option>
+                    <option>BSc Computer Science</option>
+                    <option>BSc Engineering</option>
+                  </select>
+                </div>
               </div>
               <button class="btn btn-primary" onclick="createSession()">
                 Create Session
@@ -906,12 +919,12 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Student ID</th>
+                    <th>Card UID</th>
                     <th>Course</th>
-                    <th>Date</th>
-                    <th>Occ.</th>
-                    <th>Present</th>
-                    <th>Status</th>
+                    <th>Email</th>
+                    <th>Active</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -958,7 +971,6 @@
           <div class="page" id="page-enroll">
             <div class="page-title">✚ Enroll New Student</div>
             <div class="enroll-grid">
-              <!-- Left: form -->
               <div class="form-card" style="margin-bottom: 0">
                 <div class="form-title">Student Details</div>
                 <div class="form-grid" style="grid-template-columns: 1fr">
@@ -967,8 +979,17 @@
                     ><input id="e-name" placeholder="e.g. John Murphy" />
                   </div>
                   <div class="field">
-                    <label>Student ID *</label
-                    ><input id="e-sid" placeholder="e.g. STU005" />
+                    <label>Course *</label>
+                    <select id="e-course">
+                      <option value="">Select course...</option>
+                      <option>MSc Computer Science</option>
+                      <option>MSc Artificial Intelligence</option>
+                      <option>MSc Finance</option>
+                      <option>MSc Data Analytics</option>
+                      <option>MSc Business Analytics</option>
+                      <option>BSc Computer Science</option>
+                      <option>BSc Engineering</option>
+                    </select>
                   </div>
                   <div class="field">
                     <label>NFC Card UID *</label>
@@ -1012,7 +1033,6 @@
                     ><input id="e-email" placeholder="optional" />
                   </div>
                 </div>
-
                 <button
                   class="btn btn-primary"
                   id="enroll-btn"
@@ -1021,10 +1041,8 @@
                 >
                   Enroll Student
                 </button>
-
                 <div class="enroll-status" id="enroll-status"></div>
               </div>
-
               <!-- Right: photo -->
               <div class="photo-panel">
                 <div class="photo-title">Face Photo</div>
@@ -1121,6 +1139,16 @@
 
       let photoBlob = null;
       let webcamStream = null;
+
+      const COURSES = [
+        "MSc Computer Science",
+        "MSc Artificial Intelligence",
+        "MSc Finance",
+        "MSc Data Analytics",
+        "MSc Business Analytics",
+        "BSc Computer Science",
+        "BSc Engineering",
+      ];
 
       // ── Clock ──
       function updateClock() {
@@ -1242,14 +1270,23 @@
                         { hour12: false },
                       );
                       const icon = t.status === "present" ? "✓" : "✗";
+                      const reasonMap = {
+                        no_face_detected: "No face detected",
+                        face_mismatch: "Face does not match card holder",
+                        low_similarity: "Face similarity too low",
+                        unknown_card: "Card not registered",
+                      };
+                      const reason = t.denial_reason
+                        ? reasonMap[t.denial_reason] || t.denial_reason
+                        : "";
                       return `<div class="feed-entry">
-              <div class="feed-icon ${t.status}">${icon}</div>
-              <div class="feed-body">
-                <div class="feed-name">${t.student_name}</div>
-                <div class="feed-uid">${t.uid} · ${t.device || "ESP32"}</div>
-              </div>
-              <div class="feed-time">${time}</div>
-            </div>`;
+          <div class="feed-icon ${t.status}">${icon}</div>
+          <div class="feed-body">
+            <div class="feed-name">${t.student_name}</div>
+            <div class="feed-uid">${t.uid} · ${t.device || "ESP32"}${reason ? ' · <span style="color:var(--red)">' + reason + "</span>" : ""}</div>
+          </div>
+          <div class="feed-time">${time}</div>
+        </div>`;
                     })
                     .join("");
           } else {
@@ -1283,15 +1320,15 @@
                 ? `<button class="btn btn-success btn-sm" onclick="startSession(${s.id})">▶ Start</button>`
                 : s.status === "active"
                   ? `<button class="btn btn-danger btn-sm" onclick="endSession(${s.id})">■ End</button>
-         <button class="btn btn-ghost btn-sm" style="margin-left:4px" onclick="viewAttendance(${s.id},'${s.session_code}')">View</button>`
+             <button class="btn btn-ghost btn-sm" style="margin-left:4px" onclick="viewAttendance(${s.id},'${s.session_code}')">View</button>`
                   : `<button class="btn btn-ghost btn-sm" onclick="viewAttendance(${s.id},'${s.session_code}')">View</button>`;
             return `<tr>
-      <td class="mono">${s.session_code}</td><td>${s.course_name}</td>
-      <td class="mono">${s.session_date || "—"}</td><td class="mono text-muted">#${s.occurrence}</td>
-      <td class="mono"><span style="color:var(--green)">${s.present_count}</span> / ${s.total_students || "∞"}</td>
-      <td><span class="badge ${s.status}">${s.status}</span></td>
-      <td><div class="actions-row">${actions}</div></td>
-    </tr>`;
+          <td class="mono">${s.session_code}</td><td>${s.course_name}</td>
+          <td class="mono">${s.session_date || "—"}</td><td class="mono text-muted">#${s.occurrence}</td>
+          <td class="mono"><span style="color:var(--green)">${s.present_count}</span> / ${s.total_students || "∞"}</td>
+          <td><span class="badge ${s.status}">${s.status}</span></td>
+          <td><div class="actions-row">${actions}</div></td>
+        </tr>`;
           })
           .join("");
       }
@@ -1301,6 +1338,7 @@
         const course = document.getElementById("f-course").value.trim();
         const date = document.getElementById("f-date").value;
         const occur = parseInt(document.getElementById("f-occur").value) || 1;
+        const courseFilter = document.getElementById("f-course-filter").value;
         if (!code || !course || !date) {
           toast("Fill in all required fields", "err");
           return;
@@ -1310,12 +1348,10 @@
           course_name: course,
           session_date: date,
           occurrence: occur,
+          course: courseFilter,
         });
         if (r.ok) {
           toast(`Session "${code}" created`);
-          ["f-code", "f-course", "f-occur"].forEach(
-            (id) => (document.getElementById(id).value = ""),
-          );
           loadSessions();
         } else toast(r.data.error || "Create failed", "err");
       }
@@ -1355,10 +1391,10 @@
                   { hour12: false },
                 );
                 return `<div class="feed-entry">
-          <div class="feed-icon ${t.status}">${t.status === "present" ? "✓" : "✗"}</div>
-          <div class="feed-body"><div class="feed-name">${t.student_name}</div><div class="feed-uid">${t.uid}</div></div>
-          <div class="feed-time">${time}</div>
-        </div>`;
+              <div class="feed-icon ${t.status}">${t.status === "present" ? "✓" : "✗"}</div>
+              <div class="feed-body"><div class="feed-name">${t.student_name}</div><div class="feed-uid">${t.uid}</div></div>
+              <div class="feed-time">${time}</div>
+            </div>`;
               })
               .join("");
         document.getElementById("feed-updated").textContent =
@@ -1371,20 +1407,26 @@
         const tbody = document.getElementById("students-tbody");
         if (!r.ok || !r.data.length) {
           tbody.innerHTML =
-            '<tr><td colspan="6"><div class="empty">No students registered.</div></td></tr>';
+            '<tr><td colspan="7"><div class="empty">No students registered.</div></td></tr>';
           return;
         }
         tbody.innerHTML = r.data
           .map(
             (s) => `
-    <tr>
-      <td><strong>${s.name}</strong></td>
-      <td class="mono">${s.student_id}</td>
-      <td class="mono text-accent">${s.uid}</td>
-      <td class="text-muted">${s.email || "—"}</td>
-      <td>${s.active ? '<span class="text-green">●</span>' : '<span class="text-muted">○</span>'}</td>
-      <td class="mono text-muted">${s.registered_at ? s.registered_at.slice(0, 10) : "—"}</td>
-    </tr>`,
+        <tr id="student-row-${s.id}">
+          <td><strong>${s.name}</strong></td>
+          <td class="mono">${s.student_id}</td>
+          <td class="mono text-accent">${s.uid}</td>
+          <td class="text-muted">${s.course || "—"}</td>
+          <td class="text-muted">${s.email || "—"}</td>
+          <td>${s.active ? '<span class="text-green">●</span>' : '<span class="text-muted">○</span>'}</td>
+          <td>
+            <div class="actions-row">
+              <button class="btn btn-ghost btn-sm" onclick="editStudent(${s.id}, '${s.name}', '${s.email || ""}', '${s.course || ""}')">✎ Edit</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.id}, '${s.name}')">✕ Delete</button>
+            </div>
+          </td>
+        </tr>`,
           )
           .join("");
       }
@@ -1490,6 +1532,60 @@
         }
       }
 
+      async function deleteStudent(id, name) {
+        if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
+        const r = await api(`/api/students/${id}`, "DELETE");
+        if (r.ok) {
+          toast(`${name} deleted`);
+          loadStudents();
+        } else toast(r.data.error || "Delete failed", "err");
+      }
+
+      function editStudent(id, name, email, course) {
+        // Simple inline edit using a modal-style overlay
+        const row = document.getElementById(`student-row-${id}`);
+        row.innerHTML = `
+        <td colspan="5">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:4px 0">
+            <input id="edit-name-${id}" value="${name}" placeholder="Name"
+              style="background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:6px 10px;color:var(--text);font-size:13px;width:180px" />
+            <select id="edit-course-${id}"
+              style="background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:6px 10px;color:var(--text);font-size:13px">
+              <option value="">No course</option>
+              ${COURSES.map((c) => `<option value="${c}" ${c === course ? "selected" : ""}>${c}</option>`).join("")}
+            </select>
+            <input id="edit-email-${id}" value="${email}" placeholder="Email"
+              style="background:var(--bg);border:1px solid var(--border2);border-radius:4px;padding:6px 10px;color:var(--text);font-size:13px;width:200px" />
+          </div>
+        </td>
+        <td></td>
+        <td>
+          <div class="actions-row">
+            <button class="btn btn-primary btn-sm" onclick="saveStudent(${id})">✓ Save</button>
+            <button class="btn btn-ghost btn-sm" onclick="loadStudents()">✕ Cancel</button>
+          </div>
+        </td>`;
+      }
+
+      async function saveStudent(id) {
+        const name = document.getElementById(`edit-name-${id}`).value.trim();
+        const course = document.getElementById(`edit-course-${id}`).value;
+        const email = document.getElementById(`edit-email-${id}`).value.trim();
+        if (!name) {
+          toast("Name is required", "err");
+          return;
+        }
+        const r = await api(`/api/students/${id}`, "PUT", {
+          name,
+          course,
+          email,
+        });
+        if (r.ok) {
+          toast("Student updated");
+          loadStudents();
+        } else toast(r.data.error || "Update failed", "err");
+      }
+
       function setEnrollStatus(msg, type) {
         const el = document.getElementById("enroll-status");
         el.innerHTML = msg;
@@ -1552,12 +1648,16 @@
 
       async function submitEnroll() {
         const name = document.getElementById("e-name").value.trim();
-        const sid = document.getElementById("e-sid").value.trim();
         const uid = document.getElementById("e-uid").value.trim();
         const email = document.getElementById("e-email").value.trim();
+        const course = document.getElementById("e-course").value;
 
-        if (!name || !sid || !uid) {
-          toast("Name, Student ID and UID are required", "err");
+        if (!name || !uid) {
+          toast("Name and UID are required", "err");
+          return;
+        }
+        if (!course) {
+          toast("Please select a course", "err");
           return;
         }
         if (!photoBlob) {
@@ -1576,9 +1676,9 @@
         try {
           const fd = new FormData();
           fd.append("name", name);
-          fd.append("student_id", sid);
           fd.append("uid", uid);
           fd.append("email", email);
+          fd.append("course", course);
           fd.append("photo", photoBlob, "photo.jpg");
 
           const r = await fetch(API + "/api/enroll", {
@@ -1590,19 +1690,20 @@
 
           if (r.status === 201) {
             setEnrollStatus(
-              `✓ <strong>${name}</strong> enrolled successfully. Face indexed in Rekognition.`,
+              `✓ <strong>${name}</strong> enrolled as <strong>${data.student.student_id}</strong> — face indexed.`,
               "ok",
             );
-            toast(`${name} enrolled`);
-            ["e-name", "e-sid", "e-uid", "e-email"].forEach(
+            toast(`${name} enrolled (${data.student.student_id})`);
+            ["e-name", "e-uid", "e-email"].forEach(
               (id) => (document.getElementById(id).value = ""),
             );
+            document.getElementById("e-course").value = "";
             photoBlob = null;
             document.getElementById("photo-img").classList.remove("visible");
             document.getElementById("preview-placeholder").style.display = "";
           } else if (r.status === 207) {
             setEnrollStatus(
-              `⚠ <strong>${name}</strong> registered in DB but face indexing failed.<br><small>${data.warning || ""}</small>`,
+              `⚠ <strong>${name}</strong> registered as <strong>${data.student?.student_id}</strong> but face indexing failed.<br><small>${data.warning || ""}</small>`,
               "warn",
             );
             toast("Partial enrollment — check face backend", "warn");
@@ -1618,7 +1719,6 @@
           btn.innerHTML = "Enroll Student";
         }
       }
-
       // ── Polling ──
       document.getElementById("f-date").valueAsDate = new Date();
       setInterval(() => {

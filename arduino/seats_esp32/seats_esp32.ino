@@ -16,8 +16,8 @@
 #define BUZZER    4
 
 // --- Config ---
-const char* WIFI_SSID = "Cumberland";
-const char* WIFI_PASS = "Cumberland7";
+const char* WIFI_SSID = "PRATIK";
+const char* WIFI_PASS = "123456789";
 const char* API_URL   = "https://seats-production-4c03.up.railway.app";
 const char* API_KEY   = "c32d2eb7db57fb3cf743ca72c53cd8971579cbba99c53e77f80ea282405170d3";
 

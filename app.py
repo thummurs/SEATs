@@ -89,6 +89,12 @@ def require_api_key(f):
         return f(*args, **kwargs)
     return decorated
 
+def generate_student_id(cur):
+    cur.execute("SELECT MAX(CAST(REGEXP_REPLACE(student_id, '[^0-9]', '', 'g') AS INTEGER)) FROM students WHERE student_id ~ '^STU[0-9]+$'")
+    row = cur.fetchone()
+    max_num = row[0] if row and row[0] else 999
+    return f"STU{max_num + 1:03d}"
+
 
 # ── Health ──────────────────────────────────
 
@@ -348,11 +354,21 @@ def face_result():
         session    = cur.fetchone() if session_id else None
         occurrence = session["occurrence"] if session else None
 
+        # Determine denial reason
+        denial_reason = None
+        if not matched:
+            if similarity == 0.0:
+                denial_reason = "no_face_detected"
+            elif rekognition_id and rekognition_id != (student_row["student_id"] if student_row else ""):
+                denial_reason = "face_mismatch"
+            else:
+                denial_reason = "low_similarity"
+
         cur.execute("""
             INSERT INTO attendance
-                (record_id, uid, student_name, session_id, occurrence, status, device)
-            VALUES (%s, %s, %s, %s, %s, %s, 'ESP32-S3-EYE+NFC')
-        """, (record_id, uid, student_name, session_id, occurrence, att_status))
+                (record_id, uid, student_name, session_id, occurrence, status, device, denial_reason)
+            VALUES (%s, %s, %s, %s, %s, %s, 'ESP32-S3-EYE+NFC', %s)
+        """, (record_id, uid, student_name, session_id, occurrence, att_status, denial_reason))
 
         # Increment session count if present
         if session_id and matched:
@@ -408,14 +424,31 @@ def attendance_status(uid):
 
 # ── Sessions ────────────────────────────────
 
-@app.route("/api/sessions", methods=["GET"])
+@app.route("/api/sessions", methods=["POST"])
 @require_api_key
-def list_sessions():
+def create_session():
+    data = request.get_json(silent=True) or {}
+    for field in ["session_code", "course_name", "session_date", "occurrence"]:
+        if not data.get(field):
+            return jsonify({"error": f"Missing field: {field}"}), 400
     conn = get_db()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
-        cur.execute("SELECT * FROM sessions ORDER BY created_at DESC")
-        return jsonify(serialize_all(cur.fetchall())), 200
+        cur.execute("""
+            INSERT INTO sessions (session_code, course_name, session_date, occurrence, course)
+            VALUES (%s, %s, %s, %s, %s) RETURNING id, session_code, status
+        """, (data["session_code"], data["course_name"],
+              data["session_date"], data["occurrence"],
+              data.get("course", "")))
+        row = cur.fetchone()
+        conn.commit()
+        return jsonify({"message": "Session created", "session": serialize(row)}), 201
+    except psycopg2.errors.UniqueViolation:
+        conn.rollback()
+        return jsonify({"error": "session_code already exists"}), 409
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": "Internal server error"}), 500
     finally:
         cur.close(); conn.close()
 
@@ -508,7 +541,7 @@ def session_attendance(session_id):
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
         cur.execute("""
-            SELECT record_id, uid, student_name, status, nfc_timestamp, device
+            SELECT record_id, uid, student_name, status, nfc_timestamp, device, denial_reason
             FROM attendance WHERE session_id = %s
             ORDER BY nfc_timestamp ASC
         """, (session_id,))
@@ -557,6 +590,17 @@ def register_student():
         conn.rollback()
         log.error(f"register_student: {e}")
         return jsonify({"error": "Internal server error"}), 500
+    finally:
+        cur.close(); conn.close()
+
+@app.route("/api/students/by-course/<path:course>", methods=["GET"])
+@require_api_key
+def students_by_course(course):
+    conn = get_db()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM students WHERE course = %s AND active = TRUE ORDER BY name", (course,))
+        return jsonify(serialize_all(cur.fetchall())), 200
     finally:
         cur.close(); conn.close()
 
@@ -646,54 +690,44 @@ def list_pending():
 @app.route("/api/enroll", methods=["POST"])
 @require_api_key
 def enroll_student():
-    """
-    Single endpoint that:
-    1. Registers student in PostgreSQL
-    2. Indexes their face in Rekognition via FastAPI
-    Accepts multipart/form-data:
-      - name, student_id, uid, email (form fields)
-      - photo (JPEG file)
-    """
     import requests as req
- 
-    # --- Parse form fields ---
-    name       = request.form.get("name", "").strip()
-    student_id = request.form.get("student_id", "").strip()
-    uid        = request.form.get("uid", "").strip().lower()
-    email      = request.form.get("email", "").strip()
- 
-    if not name or not student_id or not uid:
-        return jsonify({"error": "name, student_id and uid are required"}), 400
- 
+
+    name   = request.form.get("name", "").strip()
+    uid    = request.form.get("uid", "").strip().lower()
+    email  = request.form.get("email", "").strip()
+    course = request.form.get("course", "MSc Computer Science").strip()
+
+    if not name or not uid:
+        return jsonify({"error": "name and uid are required"}), 400
+
     parts = uid.split(":")
     if not (3 <= len(parts) <= 7):
         return jsonify({"error": "Invalid UID format"}), 400
- 
-    # --- Get photo ---
+
     photo = request.files.get("photo")
     if not photo:
         return jsonify({"error": "photo is required"}), 400
- 
+
     photo_bytes = photo.read()
     if len(photo_bytes) < 1000:
         return jsonify({"error": "Photo too small — make sure it's a valid JPEG"}), 400
- 
-    # --- Register in PostgreSQL ---
+
     conn = get_db()
     cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     try:
+        student_id = generate_student_id(cur)
         cur.execute("""
-            INSERT INTO students (uid, name, student_id, email)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id, uid, name, student_id
-        """, (uid, name, student_id, email))
+            INSERT INTO students (uid, name, student_id, email, course)
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING id, uid, name, student_id, course
+        """, (uid, name, student_id, email, course))
         student = cur.fetchone()
         conn.commit()
-        log.info(f"Enrolled student in DB: {name} ({uid})")
+        log.info(f"Enrolled student in DB: {name} ({uid}) [{student_id}] [{course}]")
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
         cur.close(); conn.close()
-        return jsonify({"error": "uid or student_id already exists"}), 409
+        return jsonify({"error": "uid already exists"}), 409
     except Exception as e:
         conn.rollback()
         cur.close(); conn.close()
@@ -702,49 +736,41 @@ def enroll_student():
     finally:
         cur.close()
         conn.close()
- 
-    # --- Index face in Rekognition via FastAPI ---
+
     fastapi_url = os.getenv("FASTAPI_URL", "http://localhost:8000")
     try:
         face_resp = req.post(
             f"{fastapi_url}/faces/add",
             data=photo_bytes,
             headers={
-                "Content-Type":  "image/jpeg",
-                "X-Person-Id":   student_id,   # used as ExternalImageId in Rekognition
-                "X-API-Key":     API_KEY,
+                "Content-Type": "image/jpeg",
+                "X-Person-Id":  student_id,
+                "X-API-Key":    API_KEY,
             },
             timeout=15
         )
         if face_resp.status_code == 200:
             face_data = face_resp.json()
-            log.info(f"Face indexed: {student_id} → {face_data.get('face_id')}")
             return jsonify({
-                "message":    "Student enrolled successfully",
-                "student":    serialize(student),
-                "face_id":    face_data.get("face_id"),
-                "person_id":  student_id,
+                "message":   "Student enrolled successfully",
+                "student":   serialize(student),
+                "face_id":   face_data.get("face_id"),
+                "person_id": student_id,
             }), 201
         else:
-            # DB registration succeeded but face indexing failed
-            # Student is registered but won't pass face check until re-indexed
-            log.warning(f"Face indexing failed: {face_resp.status_code} {face_resp.text}")
             return jsonify({
-                "message":  "Student registered in DB but face indexing failed",
-                "student":  serialize(student),
+                "message":    "Student registered in DB but face indexing failed",
+                "student":    serialize(student),
                 "face_error": face_resp.text,
-                "warning":  "Re-upload photo to complete enrollment"
-            }), 207  # 207 = partial success
- 
+                "warning":    "Re-upload photo to complete enrollment"
+            }), 207
     except req.exceptions.ConnectionError:
-        log.warning("FastAPI not reachable — student registered in DB only")
         return jsonify({
             "message": "Student registered in DB but face backend is offline",
             "student": serialize(student),
             "warning": "Start FastAPI backend and re-index face"
         }), 207
     except Exception as e:
-        log.error(f"Face indexing error: {e}")
         return jsonify({
             "message": "Student registered but face indexing errored",
             "student": serialize(student),
@@ -768,6 +794,61 @@ def scan_result():
         _scan_state["uid"] = None
         return jsonify({"found": True, "uid": uid}), 200
     return jsonify({"found": False}), 200
+
+@app.route("/api/students/<int:student_id>", methods=["PUT"])
+@require_api_key
+def update_student(student_id):
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            UPDATE students SET
+                name   = COALESCE(%s, name),
+                email  = COALESCE(%s, email),
+                course = COALESCE(%s, course),
+                active = COALESCE(%s, active)
+            WHERE id = %s
+            RETURNING id, uid, name, student_id, email, course, active
+        """, (
+            data.get("name"),
+            data.get("email"),
+            data.get("course"),
+            data.get("active"),
+            student_id
+        ))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"error": "Student not found"}), 404
+        conn.commit()
+        return jsonify({"message": "Student updated", "student": serialize(row)}), 200
+    except Exception as e:
+        conn.rollback()
+        log.error(f"update_student: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+    finally:
+        cur.close(); conn.close()
+
+
+@app.route("/api/students/<int:student_id>", methods=["DELETE"])
+@require_api_key
+def delete_student(student_id):
+    conn = get_db()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("DELETE FROM students WHERE id = %s RETURNING id, name", (student_id,))
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"error": "Student not found"}), 404
+        conn.commit()
+        log.info(f"Deleted student: {row['name']} (id={student_id})")
+        return jsonify({"message": f"Student {row['name']} deleted"}), 200
+    except Exception as e:
+        conn.rollback()
+        log.error(f"delete_student: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+    finally:
+        cur.close(); conn.close()
 
 
 # ── Run ─────────────────────────────────────
