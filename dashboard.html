@@ -919,12 +919,12 @@
               <table>
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Student ID</th>
-                    <th>Card UID</th>
+                    <th>Code</th>
                     <th>Course</th>
-                    <th>Email</th>
-                    <th>Active</th>
+                    <th>Date</th>
+                    <th>Occ.</th>
+                    <th>Present</th>
+                    <th>Status</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -953,9 +953,10 @@
                     <th>Name</th>
                     <th>Student ID</th>
                     <th>Card UID</th>
+                    <th>Course</th>
                     <th>Email</th>
                     <th>Active</th>
-                    <th>Registered</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody id="students-tbody">
@@ -1134,11 +1135,10 @@
 
     <div class="toast" id="toast"></div>
     <script>
-      const API = "https://seats-production-4c03.up.railway.app";
+      const API = "__API_KEY_PLACEHOLDER__".startsWith("__")
+        ? "http://localhost:3000"
+        : window.location.origin;
       const API_KEY = "__API_KEY_PLACEHOLDER__";
-
-      let photoBlob = null;
-      let webcamStream = null;
 
       const COURSES = [
         "MSc Computer Science",
@@ -1149,6 +1149,10 @@
         "BSc Computer Science",
         "BSc Engineering",
       ];
+
+      let photoBlob = null;
+      let webcamStream = null;
+      let _scanInterval = null;
 
       // ── Clock ──
       function updateClock() {
@@ -1217,26 +1221,30 @@
             fetch(API + "/api/students", { headers }).then((r) => r.json()),
             fetch(API + "/api/sessions", { headers }).then((r) => r.json()),
           ]);
-          let students = Array.isArray(stuRes) ? stuRes.length : 0;
-          // If active session has a course filter, show only students in that course
-          if (active && active.course) {
-            students = Array.isArray(stuRes)
-              ? stuRes.filter((s) => s.course === active.course).length
-              : 0;
-          }
-          document.getElementById("stat-students").textContent = students;
-          const sessions = Array.isArray(sessRes) ? sessRes : [];
-          const active = sessions.find((s) => s.status === "active");
 
-          if (active) {
-            document.getElementById("ss-name").textContent = active.course_name;
+          const sessions = Array.isArray(sessRes) ? sessRes : [];
+          const activeSession = sessions.find((s) => s.status === "active");
+
+          // Students count — filter by active session course if set
+          const allStudents = Array.isArray(stuRes) ? stuRes : [];
+          let studentCount = allStudents.length;
+          if (activeSession && activeSession.course) {
+            studentCount = allStudents.filter(
+              (s) => s.course === activeSession.course,
+            ).length;
+          }
+          document.getElementById("stat-students").textContent = studentCount;
+
+          if (activeSession) {
+            document.getElementById("ss-name").textContent =
+              activeSession.course_name;
             document.getElementById("ss-badge").textContent = "active";
             document.getElementById("ss-badge").className = "badge active";
             document.getElementById("ss-stats").style.display = "flex";
             document.getElementById("ss-present").textContent =
-              active.present_count;
+              activeSession.present_count;
             document.getElementById("ss-total").textContent =
-              active.total_students || "∞";
+              activeSession.total_students || "∞";
           } else {
             document.getElementById("ss-name").textContent =
               "No active session";
@@ -1246,8 +1254,7 @@
           }
 
           const recent =
-            sessions.find((s) => s.status === "active") ||
-            sessions.find((s) => s.status === "ended");
+            activeSession || sessions.find((s) => s.status === "ended");
           if (recent) {
             const attRes = await fetch(
               API + `/api/sessions/${recent.id}/attendance`,
@@ -1261,6 +1268,14 @@
             document.getElementById("stat-denied").textContent = taps.filter(
               (t) => t.status === "denied",
             ).length;
+
+            const reasonMap = {
+              no_face_detected: "No face detected",
+              face_mismatch: "Face does not match card holder",
+              low_similarity: "Face similarity too low",
+              unknown_card: "Card not registered",
+              wrong_course: "Not enrolled in this course",
+            };
 
             const feed = document.getElementById("feed-list");
             feed.innerHTML =
@@ -1276,24 +1291,17 @@
                         { hour12: false },
                       );
                       const icon = t.status === "present" ? "✓" : "✗";
-                      const reasonMap = {
-                        no_face_detected: "No face detected",
-                        face_mismatch: "Face does not match card holder",
-                        low_similarity: "Face similarity too low",
-                        unknown_card: "Card not registered",
-                        wrong_course: "Student not enrolled in this course",
-                      };
                       const reason = t.denial_reason
                         ? reasonMap[t.denial_reason] || t.denial_reason
                         : "";
                       return `<div class="feed-entry">
-          <div class="feed-icon ${t.status}">${icon}</div>
-          <div class="feed-body">
-            <div class="feed-name">${t.student_name}</div>
-            <div class="feed-uid">${t.uid} · ${t.device || "ESP32"}${reason ? ' · <span style="color:var(--red)">' + reason + "</span>" : ""}</div>
-          </div>
-          <div class="feed-time">${time}</div>
-        </div>`;
+              <div class="feed-icon ${t.status}">${icon}</div>
+              <div class="feed-body">
+                <div class="feed-name">${t.student_name}</div>
+                <div class="feed-uid">${t.uid} · ${t.device || "ESP32"}${reason ? ' · <span style="color:var(--red)">' + reason + "</span>" : ""}</div>
+              </div>
+              <div class="feed-time">${time}</div>
+            </div>`;
                     })
                     .join("");
           } else {
@@ -1303,6 +1311,7 @@
             document.getElementById("feed-list").innerHTML =
               '<div class="empty">Create and start a session to begin tracking.</div>';
           }
+
           document.getElementById("feed-updated").textContent =
             "updated " +
             new Date().toLocaleTimeString("en-IE", { hour12: false });
@@ -1327,15 +1336,20 @@
                 ? `<button class="btn btn-success btn-sm" onclick="startSession(${s.id})">▶ Start</button>`
                 : s.status === "active"
                   ? `<button class="btn btn-danger btn-sm" onclick="endSession(${s.id})">■ End</button>
-             <button class="btn btn-ghost btn-sm" style="margin-left:4px" onclick="viewAttendance(${s.id},'${s.session_code}')">View</button>`
+         <button class="btn btn-ghost btn-sm" style="margin-left:4px" onclick="viewAttendance(${s.id},'${s.session_code}')">View</button>`
                   : `<button class="btn btn-ghost btn-sm" onclick="viewAttendance(${s.id},'${s.session_code}')">View</button>`;
+            const courseTag = s.course
+              ? `<span style="font-size:10px;color:var(--accent);margin-left:4px">[${s.course}]</span>`
+              : "";
             return `<tr>
-          <td class="mono">${s.session_code}</td><td>${s.course_name}</td>
-          <td class="mono">${s.session_date || "—"}</td><td class="mono text-muted">#${s.occurrence}</td>
-          <td class="mono"><span style="color:var(--green)">${s.present_count}</span> / ${s.total_students || "∞"}</td>
-          <td><span class="badge ${s.status}">${s.status}</span></td>
-          <td><div class="actions-row">${actions}</div></td>
-        </tr>`;
+      <td class="mono">${s.session_code}</td>
+      <td>${s.course_name}${courseTag}</td>
+      <td class="mono">${s.session_date || "—"}</td>
+      <td class="mono text-muted">#${s.occurrence}</td>
+      <td class="mono"><span style="color:var(--green)">${s.present_count}</span> / ${s.total_students || "∞"}</td>
+      <td><span class="badge ${s.status}">${s.status}</span></td>
+      <td><div class="actions-row">${actions}</div></td>
+    </tr>`;
           })
           .join("");
       }
@@ -1359,6 +1373,9 @@
         });
         if (r.ok) {
           toast(`Session "${code}" created`);
+          ["f-code", "f-course", "f-occur"].forEach(
+            (id) => (document.getElementById(id).value = ""),
+          );
           loadSessions();
         } else toast(r.data.error || "Create failed", "err");
       }
@@ -1388,6 +1405,13 @@
           return;
         }
         showPage("live");
+        const reasonMap = {
+          no_face_detected: "No face detected",
+          face_mismatch: "Face does not match card holder",
+          low_similarity: "Face similarity too low",
+          unknown_card: "Card not registered",
+          wrong_course: "Not enrolled in this course",
+        };
         const feed = document.getElementById("feed-list");
         feed.innerHTML = !r.data.length
           ? `<div class="empty">No taps for session "${code}".</div>`
@@ -1397,11 +1421,17 @@
                   "en-IE",
                   { hour12: false },
                 );
+                const reason = t.denial_reason
+                  ? reasonMap[t.denial_reason] || t.denial_reason
+                  : "";
                 return `<div class="feed-entry">
-              <div class="feed-icon ${t.status}">${t.status === "present" ? "✓" : "✗"}</div>
-              <div class="feed-body"><div class="feed-name">${t.student_name}</div><div class="feed-uid">${t.uid}</div></div>
-              <div class="feed-time">${time}</div>
-            </div>`;
+          <div class="feed-icon ${t.status}">${t.status === "present" ? "✓" : "✗"}</div>
+          <div class="feed-body">
+            <div class="feed-name">${t.student_name}</div>
+            <div class="feed-uid">${t.uid}${reason ? ' · <span style="color:var(--red)">' + reason + "</span>" : ""}</div>
+          </div>
+          <div class="feed-time">${time}</div>
+        </div>`;
               })
               .join("");
         document.getElementById("feed-updated").textContent =
@@ -1420,22 +1450,78 @@
         tbody.innerHTML = r.data
           .map(
             (s) => `
-        <tr id="student-row-${s.id}">
-          <td><strong>${s.name}</strong></td>
-          <td class="mono">${s.student_id}</td>
-          <td class="mono text-accent">${s.uid}</td>
-          <td class="text-muted">${s.course || "—"}</td>
-          <td class="text-muted">${s.email || "—"}</td>
-          <td>${s.active ? '<span class="text-green">●</span>' : '<span class="text-muted">○</span>'}</td>
-          <td>
-            <div class="actions-row">
-              <button class="btn btn-ghost btn-sm" onclick="editStudent(${s.id}, '${s.name}', '${s.email || ""}', '${s.course || ""}')">✎ Edit</button>
-              <button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.id}, '${s.name}')">✕ Delete</button>
-            </div>
-          </td>
-        </tr>`,
+    <tr id="student-row-${s.id}">
+      <td><strong>${s.name}</strong></td>
+      <td class="mono">${s.student_id}</td>
+      <td class="mono text-accent">${s.uid}</td>
+      <td class="text-muted">${s.course || "—"}</td>
+      <td class="text-muted">${s.email || "—"}</td>
+      <td>${s.active ? '<span class="text-green">●</span>' : '<span class="text-muted">○</span>'}</td>
+      <td>
+        <div class="actions-row">
+          <button class="btn btn-ghost btn-sm" onclick="editStudent(${s.id},'${s.name}','${s.email || ""}','${s.course || ""}')">✎ Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteStudent(${s.id},'${s.name}')">✕</button>
+        </div>
+      </td>
+    </tr>`,
           )
           .join("");
+      }
+
+      async function deleteStudent(id, name) {
+        if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
+        const r = await api(`/api/students/${id}`, "DELETE");
+        if (r.ok) {
+          toast(`${name} deleted`);
+          loadStudents();
+        } else toast(r.data.error || "Delete failed", "err");
+      }
+
+      function editStudent(id, name, email, course) {
+        const row = document.getElementById(`student-row-${id}`);
+        const courseOptions = COURSES.map(
+          (c) =>
+            `<option value="${c}" ${c === course ? "selected" : ""}>${c}</option>`,
+        ).join("");
+        row.innerHTML = `
+    <td colspan="5">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:4px 0">
+        <input id="edit-name-${id}" value="${name}" placeholder="Name"
+          style="background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:6px 10px;color:var(--text);font-size:13px;width:180px"/>
+        <select id="edit-course-${id}"
+          style="background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:6px 10px;color:var(--text);font-size:13px">
+          <option value="">No course</option>${courseOptions}
+        </select>
+        <input id="edit-email-${id}" value="${email}" placeholder="Email"
+          style="background:var(--bg);border:1px solid var(--border2);border-radius:4px;padding:6px 10px;color:var(--text);font-size:13px;width:200px"/>
+      </div>
+    </td>
+    <td></td>
+    <td>
+      <div class="actions-row">
+        <button class="btn btn-primary btn-sm" onclick="saveStudent(${id})">✓ Save</button>
+        <button class="btn btn-ghost btn-sm" onclick="loadStudents()">✕</button>
+      </div>
+    </td>`;
+      }
+
+      async function saveStudent(id) {
+        const name = document.getElementById(`edit-name-${id}`).value.trim();
+        const course = document.getElementById(`edit-course-${id}`).value;
+        const email = document.getElementById(`edit-email-${id}`).value.trim();
+        if (!name) {
+          toast("Name is required", "err");
+          return;
+        }
+        const r = await api(`/api/students/${id}`, "PUT", {
+          name,
+          course,
+          email,
+        });
+        if (r.ok) {
+          toast("Student updated");
+          loadStudents();
+        } else toast(r.data.error || "Update failed", "err");
       }
 
       // ── Enroll ──
@@ -1481,8 +1567,7 @@
           webcamStream = await navigator.mediaDevices.getUserMedia({
             video: { width: 640, height: 480 },
           });
-          const video = document.getElementById("webcam-video");
-          video.srcObject = webcamStream;
+          document.getElementById("webcam-video").srcObject = webcamStream;
           showPhotoPreview("video", null);
           document.getElementById("btn-capture").disabled = false;
           document.getElementById("btn-stop-cam").disabled = false;
@@ -1539,74 +1624,11 @@
         }
       }
 
-      async function deleteStudent(id, name) {
-        if (!confirm(`Delete ${name}? This cannot be undone.`)) return;
-        const r = await api(`/api/students/${id}`, "DELETE");
-        if (r.ok) {
-          toast(`${name} deleted`);
-          loadStudents();
-        } else toast(r.data.error || "Delete failed", "err");
-      }
-
-      function editStudent(id, name, email, course) {
-        // Simple inline edit using a modal-style overlay
-        const row = document.getElementById(`student-row-${id}`);
-        row.innerHTML = `
-        <td colspan="5">
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:4px 0">
-            <input id="edit-name-${id}" value="${name}" placeholder="Name"
-              style="background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:6px 10px;color:var(--text);font-size:13px;width:180px" />
-            <select id="edit-course-${id}"
-              style="background:var(--bg);border:1px solid var(--accent);border-radius:4px;padding:6px 10px;color:var(--text);font-size:13px">
-              <option value="">No course</option>
-              ${COURSES.map((c) => `<option value="${c}" ${c === course ? "selected" : ""}>${c}</option>`).join("")}
-            </select>
-            <input id="edit-email-${id}" value="${email}" placeholder="Email"
-              style="background:var(--bg);border:1px solid var(--border2);border-radius:4px;padding:6px 10px;color:var(--text);font-size:13px;width:200px" />
-          </div>
-        </td>
-        <td></td>
-        <td>
-          <div class="actions-row">
-            <button class="btn btn-primary btn-sm" onclick="saveStudent(${id})">✓ Save</button>
-            <button class="btn btn-ghost btn-sm" onclick="loadStudents()">✕ Cancel</button>
-          </div>
-        </td>`;
-      }
-
-      async function saveStudent(id) {
-        const name = document.getElementById(`edit-name-${id}`).value.trim();
-        const course = document.getElementById(`edit-course-${id}`).value;
-        const email = document.getElementById(`edit-email-${id}`).value.trim();
-        if (!name) {
-          toast("Name is required", "err");
-          return;
-        }
-        const r = await api(`/api/students/${id}`, "PUT", {
-          name,
-          course,
-          email,
-        });
-        if (r.ok) {
-          toast("Student updated");
-          loadStudents();
-        } else toast(r.data.error || "Update failed", "err");
-      }
-
-      function setEnrollStatus(msg, type) {
-        const el = document.getElementById("enroll-status");
-        el.innerHTML = msg;
-        el.className = `enroll-status show ${type}`;
-      }
-
-      let _scanInterval = null;
-
       async function startCardScan() {
         const btn = document.getElementById("scan-btn");
         const status = document.getElementById("scan-status");
-        const uidInput = document.getElementById("e-uid");
+        const input = document.getElementById("e-uid");
 
-        // Start scan mode on Flask
         const r = await fetch(API + "/api/scan/start", {
           method: "POST",
           headers: { "X-API-Key": API_KEY },
@@ -1616,13 +1638,12 @@
           return;
         }
 
-        // Update UI
         btn.disabled = true;
         btn.textContent = "⏳ Waiting...";
-        uidInput.value = "";
+        input.value = "";
         status.textContent = "Tap your NFC card on the reader now...";
+        status.style.color = "var(--muted)";
 
-        // Poll for result every second for up to 30 seconds
         let attempts = 0;
         _scanInterval = setInterval(async () => {
           attempts++;
@@ -1634,15 +1655,13 @@
             status.style.color = "var(--red)";
             return;
           }
-
           const res = await fetch(API + "/api/scan/result", {
             headers: { "X-API-Key": API_KEY },
           });
           const data = await res.json();
-
           if (data.found) {
             clearInterval(_scanInterval);
-            uidInput.value = data.uid;
+            input.value = data.uid;
             btn.disabled = false;
             btn.textContent = "✓ Scanned";
             btn.style.color = "var(--green)";
@@ -1651,6 +1670,12 @@
             toast(`Card scanned: ${data.uid}`);
           }
         }, 1000);
+      }
+
+      function setEnrollStatus(msg, type) {
+        const el = document.getElementById("enroll-status");
+        el.innerHTML = msg;
+        el.className = `enroll-status show ${type}`;
       }
 
       async function submitEnroll() {
@@ -1697,14 +1722,17 @@
 
           if (r.status === 201) {
             setEnrollStatus(
-              `✓ <strong>${name}</strong> enrolled as <strong>${data.student.student_id}</strong> — face indexed.`,
+              `✓ <strong>${name}</strong> enrolled as <strong>${data.student?.student_id}</strong> — face indexed.`,
               "ok",
             );
-            toast(`${name} enrolled (${data.student.student_id})`);
+            toast(`${name} enrolled (${data.student?.student_id})`);
             ["e-name", "e-uid", "e-email"].forEach(
               (id) => (document.getElementById(id).value = ""),
             );
             document.getElementById("e-course").value = "";
+            document.getElementById("scan-btn").textContent = "📡 Tap Card";
+            document.getElementById("scan-btn").style.color = "";
+            document.getElementById("scan-status").textContent = "";
             photoBlob = null;
             document.getElementById("photo-img").classList.remove("visible");
             document.getElementById("preview-placeholder").style.display = "";
@@ -1726,6 +1754,7 @@
           btn.innerHTML = "Enroll Student";
         }
       }
+
       // ── Polling ──
       document.getElementById("f-date").valueAsDate = new Date();
       setInterval(() => {
