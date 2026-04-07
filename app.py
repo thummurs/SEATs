@@ -453,35 +453,6 @@ def create_session():
         cur.close(); conn.close()
 
 
-@app.route("/api/sessions", methods=["POST"])
-@require_api_key
-def create_session():
-    data = request.get_json(silent=True) or {}
-    for field in ["session_code", "course_name", "session_date", "occurrence"]:
-        if not data.get(field):
-            return jsonify({"error": f"Missing field: {field}"}), 400
-    conn = get_db()
-    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    try:
-        cur.execute("""
-            INSERT INTO sessions (session_code, course_name, session_date, occurrence)
-            VALUES (%s, %s, %s, %s) RETURNING id, session_code, status
-        """, (data["session_code"], data["course_name"],
-              data["session_date"], data["occurrence"]))
-        row = cur.fetchone()
-        conn.commit()
-        return jsonify({"message": "Session created", "session": serialize(row)}), 201
-    except psycopg2.errors.UniqueViolation:
-        conn.rollback()
-        return jsonify({"error": "session_code already exists"}), 409
-    except Exception as e:
-        conn.rollback()
-        log.error(f"POST /api/sessions: {e}")
-        return jsonify({"error": "Internal server error"}), 500
-    finally:
-        cur.close(); conn.close()
-
-
 @app.route("/api/sessions/<int:session_id>/start", methods=["PUT"])
 @require_api_key
 def start_session(session_id):
