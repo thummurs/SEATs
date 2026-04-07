@@ -90,10 +90,15 @@ def require_api_key(f):
     return decorated
 
 def generate_student_id(cur):
-    cur.execute("SELECT MAX(CAST(REGEXP_REPLACE(student_id, '[^0-9]', '', 'g') AS INTEGER)) FROM students WHERE student_id ~ '^STU[0-9]+$'")
+    cur.execute("SELECT student_id FROM students WHERE student_id LIKE 'STU%' ORDER BY student_id DESC LIMIT 1")
     row = cur.fetchone()
-    max_num = row[0] if row and row[0] else 999
-    return f"STU{max_num + 1:03d}"
+    if row:
+        try:
+            num = int(row["student_id"].replace("STU", ""))
+            return f"STU{num + 1:03d}"
+        except:
+            pass
+    return "STU001"
 
 
 # ── Health ──────────────────────────────────
@@ -423,6 +428,17 @@ def attendance_status(uid):
 
 
 # ── Sessions ────────────────────────────────
+
+@app.route("/api/sessions", methods=["GET"])
+@require_api_key
+def list_sessions():
+    conn = get_db()
+    cur  = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("SELECT * FROM sessions ORDER BY created_at DESC")
+        return jsonify(serialize_all(cur.fetchall())), 200
+    finally:
+        cur.close(); conn.close()
 
 @app.route("/api/sessions", methods=["POST"])
 @require_api_key
